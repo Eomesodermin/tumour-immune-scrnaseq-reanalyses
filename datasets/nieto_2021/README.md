@@ -8,7 +8,7 @@
 | **Species** | Human |
 | **Assay** | Integrated 10x Genomics atlas (>500,000 cells, 13 cancer types) |
 | **Biological system** | Pan-cancer tumour-infiltrating immune cells |
-| **Data** | [Zenodo 4036019 (Seurat/AnnData objects, ~27 GB)](https://zenodo.org/records/4036019) |
+| **Data** | [Zenodo 4263972 (Seurat and AnnData objects; the full `TICAtlas.rds` is ~24 GB)](https://zenodo.org/records/4263972) |
 
 ## What this analysis does
 
