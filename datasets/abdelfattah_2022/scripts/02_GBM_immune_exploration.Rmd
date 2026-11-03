@@ -1,0 +1,473 @@
+---
+title: "GBM_dataset_GSE182109"
+author: "Dillon Corvino"
+date: "31/01/2023"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+
+
+### Dataset information
+
+```{r Dataset_Info}
+
+# Single-cell analysis of human glioma and immune cells identifies S100A4 as an immunotherapy target (GSE182109)
+
+# data downloaded from single cell portal (broad institute)
+
+```
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
+setwd(here::here())   # project root; works in RStudio, knitr and Rscript
+
+# Explicitly load key packages
+library("Seurat")
+library("SeuratDisk")
+library("dplyr")
+library("scCustomize")
+library("usefulfunctions")
+
+# pipeline variables
+quick.load <- FALSE
+long.compute <- FALSE
+
+
+output.dir <- "results/figures/"
+
+if(!dir.exists(output.dir)){
+  dir.create(output.dir, recursive = T)
+}
+
+
+
+# Colour scheme 
+usefulfunctions::Get.batlow()
+
+```
+
+## Reading in and formatting dataset {.tabset}
+
+### Reading data
+```{r reading_data}
+
+
+if(long.compute){
+  #raw.data <- Seurat::Read10X(data.dir = "data/SCP1985/expression/Raw_data/")
+  
+  
+  input.meta <- read.delim("data/SCP1985/metadata/Meta_GBM.txt", sep = ",")
+  
+  input.meta <- input.meta[-1, ]
+  
+  rownames(input.meta) <- input.meta$NAME
+  
+  
+  # load processed data
+  processed.data <- Seurat::Read10X(data.dir = "data/SCP1985/expression/Processed_data/")
+  
+  processed.seurat <- CreateAssayObject(data = processed.data)
+  
+  GBM.seurat <- CreateSeuratObject(counts = processed.seurat,
+                                   min.cells = 0,
+                                   min.features = 0,
+                                   is.expr = 0, 
+                                   normalization.method = NULL, 
+                                   do.scale = FALSE, 
+                                   do.center = FALSE, 
+                                   names.field = 1, 
+                                   names.delim = "_", 
+                                   meta.data = input.meta)
+  
+  
+  
+  GBM.seurat@meta.data[1:10, ]
+  
+  
+  # remove large objects
+  rm(input.meta, processed.data, processed.seurat)
+}
+```
+
+
+### Adding umap metadata
+```{r adding_umap_metadata}
+
+if(long.compute){
+  
+  # Set seed for reproducibility
+  set.seed(42)
+  
+  DefaultAssay(GBM.seurat) <- "RNA"
+  
+  
+  GBM.seurat@meta.data[1:10,]
+  
+  colnames(GBM.seurat@meta.data)
+  
+  
+  input.umap <- read.delim("data/SCP1985/cluster/Cluster_GBM.txt", sep = ",")
+  
+  input.umap <- input.umap[-1,]
+  
+  rownames(input.umap)
+  colnames(input.umap)
+  input.umap <- input.umap[,2:3]
+  input.umap$X <- as.numeric(input.umap$X)
+  input.umap$Y <- as.numeric(input.umap$Y)
+  colnames(input.umap)
+  colnames(input.umap) <- c("UMAP_1", "UMAP_2")
+  input.umap <- as.matrix(input.umap)
+  
+  
+  
+  DefaultAssay(GBM.seurat) <- "RNA"
+  
+  GBM.seurat[["umap"]] <- CreateDimReducObject(embeddings = input.umap,
+                                               key = "umap_",
+                                               assay = DefaultAssay(GBM.seurat))
+  
+  
+  Idents(GBM.seurat) <- GBM.seurat@meta.data$Assignment
+  
+  
+  
+  SeuratDisk::SaveH5Seurat(GBM.seurat, 
+                           filename = "data/GBM_seurat_object.h5seurat", 
+                           overwrite = TRUE, 
+                           verbose = TRUE)
+}else{
+  
+  GBM.seurat <- SeuratDisk::LoadH5Seurat("data/GBM_seurat_object.h5seurat")
+  
+}
+
+
+
+```
+
+## Visualising dataset {.tabset}
+
+### Vis gene expression
+```{r vis_gene_expression}
+
+
+output.dir <- "results/figures/"
+
+if(!dir.exists(output.dir)){
+  dir.create(output.dir, recursive = T)
+}
+
+
+# Colour scheme taken from original publication
+AssignmentColors <- c(TCells = "#8DB032", BCells = "#F9BF31", 
+                      Other = "#E47B1E", Myeloid = "#CD4D53", 
+                      Endo = "#DC73B0", Oligo = "#966CBF",
+                      Pericytes = "#2960A1", Glioma = "#003F5C")
+
+# Plot UMAP projection
+UMAPPlot(object = GBM.seurat,
+         group.by = "Assignment",
+         cols = AssignmentColors,
+         raster = TRUE,
+         label = TRUE, 
+         label.size = 6) + NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "UMAP_Assignments_raster.pdf"))
+dev.off()
+
+
+# colour scheme for plots 
+library(RColorBrewer)
+
+#RColorBrewer::display.brewer.all()
+
+cols.var <- RColorBrewer::brewer.pal(9, "OrRd")
+
+scCustomize::FeaturePlot_scCustom(GBM.seurat, 
+                                  features = "CXCL12",
+                                  order = TRUE,
+                                  raster = FALSE,
+                                  colors_use = cols.var,
+                                  na_color = "lightgray")
+
+dev.copy(pdf, paste0(output.dir, "Figure_3A.pdf"))
+dev.off()
+
+
+```
+
+
+### CXCL12 in GBM cells vs hypoxia
+```{r CXCL12_hypoxia_GBM_expression}
+
+
+output.dir <- "results/figures/CXCL12_Hypoxia_GBM/"
+
+if(!dir.exists(output.dir)){
+  dir.create(output.dir, recursive = T)
+}
+
+
+
+scCustomize::DimPlot_scCustom(GBM.seurat, 
+                              pt.size = 1)
+
+dev.copy(pdf, paste0(output.dir, "UMAP_cellassignements.pdf"))
+dev.off()
+
+
+
+
+
+Idents(GBM.seurat) <- GBM.seurat@meta.data$Assignment
+
+table(Idents(GBM.seurat)) # 81,764 cells
+
+GBM.only <- subset(GBM.seurat, idents = "Glioma")
+GBM.only <- ScaleData(GBM.only)
+GBM.only
+
+cols.var <- RColorBrewer::brewer.pal(9, "OrRd")
+
+scCustomize::FeaturePlot_scCustom(GBM.seurat, 
+                                  features = "CA9",
+                                  order = TRUE,
+                                  raster = FALSE,
+                                  colors_use = cols.var,
+                                  na_color = "lightgray")
+
+dev.copy(pdf, paste0(output.dir, "Featureplot_CA9_expression.pdf"))
+dev.off()
+
+scCustomize::FeaturePlot_scCustom(GBM.seurat, 
+                                  features = "CXCL12",
+                                  order = TRUE,
+                                  raster = FALSE,
+                                  colors_use = cols.var,
+                                  na_color = "lightgray")
+
+dev.copy(pdf, paste0(output.dir, "Featureplot_CXCL12_expression.pdf"))
+dev.off()
+
+
+scCustomize::FeaturePlot_scCustom(GBM.seurat, 
+                                  features = "HIF1A",
+                                  order = TRUE,
+                                  raster = FALSE,
+                                  colors_use = cols.var,
+                                  na_color = "lightgray")
+
+dev.copy(pdf, paste0(output.dir, "Featureplot_HIF1A_expression.pdf"))
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+goi <- c("HIF1A", "CA9", "CXCL12")
+
+scCustomize::FeaturePlot_scCustom(GBM.only, 
+                                  features = c("CXCL12", "CA9"),
+                                  order = TRUE,
+                                  raster = FALSE,
+                                  colors_use = cols.var,
+                                  na_color = "lightgray")
+
+dev.copy(pdf, paste0(output.dir, "Featureplot_CXCL12_and_CA9_expression_in_GBM_only_cells.pdf"))
+dev.off()
+
+
+
+
+
+
+
+
+CA9.values <- GBM.only@assays$RNA@data[grep("^CA9$", rownames(GBM.only@assays$RNA@data)), ]
+CA9.expression <- CA9.values > 0
+table(CA9.expression)
+
+#unique(GBM.only@meta.data$donor_id)
+#unique(GBM.only@meta.data$Patient)
+#unique(GBM.only@meta.data$CopyKatPrediction)
+#unique(GBM.only@meta.data$Type)
+sum(rownames(GBM.only@meta.data) != names(CA9.expression))
+
+GBM.only@meta.data$CA9status <- CA9.expression
+
+
+CA9.values <- GBM.only@assays$RNA@data[grep("^CA9$", rownames(GBM.only@assays$RNA@data)), ]
+CA9.expression <- CA9.values > 0
+table(CA9.expression)
+GBM.only@meta.data$CA9status <- CA9.expression
+
+grep("^VEGFA$", rownames(GBM.only@assays$RNA@data), value = T)
+VEGFA.values <- GBM.only@assays$RNA@data[grep("^VEGFA$", rownames(GBM.only@assays$RNA@data)), ]
+VEGFA.expression <- VEGFA.values > 0
+table(VEGFA.expression)
+GBM.only@meta.data$VEGFAstatus <- VEGFA.expression
+
+grep("^IL1B$", rownames(GBM.only@assays$RNA@data), value = T)
+IL1B.values <- GBM.only@assays$RNA@data[grep("^IL1B$", rownames(GBM.only@assays$RNA@data)), ]
+IL1B.expression <- IL1B.values > 0
+table(IL1B.expression)
+GBM.only@meta.data$IL1Bstatus <- IL1B.expression
+
+
+
+
+scCustomize::VlnPlot_scCustom(GBM.only, 
+                 "IL1B", 
+                 pt.size = 0.1,
+                 group.by = "CA9status")
+
+
+
+
+scCustomize::VlnPlot_scCustom(GBM.only, 
+                 "IL1B", 
+                 pt.size = 0.1,
+                 group.by = "VEGFAstatus")
+
+
+
+
+p1 <- scCustomize::VlnPlot_scCustom(GBM.only, 
+                 "CA9", 
+                 pt.size = 0.1,
+                 group.by = "CA9status")
+
+
+p2 <- scCustomize::VlnPlot_scCustom(GBM.only, 
+                 "IL1B", 
+                 pt.size = 0.1,
+                 group.by = "CA9status")
+
+p1|p2
+
+
+
+
+scCustomize::VlnPlot_scCustom(GBM.only, 
+                 "CA9", 
+                 pt.size = 0.1,
+                 group.by = "CA9status")
+
+scCustomize::VlnPlot_scCustom(GBM.only, 
+                 "IL1B", 
+                 pt.size = 0.1,
+                 group.by = "IL1Bstatus")
+
+
+
+
+table(GBM.only@meta.data$IL1Bstatus, GBM.only@meta.data$VEGFAstatus)
+
+
+
+
+
+
+
+scCustomize::VlnPlot_scCustom(GBM.only, 
+                 "CXCL12", 
+                 pt.size = 0.1,
+                 group.by = "CA9status")
+
+
+
+
+
+
+
+
+scCustomize::VlnPlot_scCustom(GBM.only, 
+                 "CXCL12", 
+                 pt.size = 0.1,
+                 group.by = "CA9status")
+
+dev.copy(pdf, paste0(output.dir, "VlnPlot_CXCL12_expression_in_GBM_only_cells_across_CA9_status.pdf"))
+dev.off()
+
+
+
+
+FeatureScatter(GBM.seurat,
+               feature1 = "CA9", 
+               feature2 ="VEGFA")
+
+
+
+
+
+
+
+VlnPlot(GBM.seurat,
+        features = "CXCL12",
+        pt.size = 0) + NoLegend()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+
+
+

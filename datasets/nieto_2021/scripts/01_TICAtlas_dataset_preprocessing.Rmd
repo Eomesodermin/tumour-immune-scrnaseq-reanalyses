@@ -1,0 +1,172 @@
+---
+title: "TICAtlas_dataset_preprocessing"
+author: "Dillon Corvino"
+date: "15/02/2024"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+Built with R version `r getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+```{r Dataset_Info}
+
+# dataset from 
+# publication = https://genome.cshlp.org/content/31/10/1913
+# downloaded from = https://zenodo.org/records/4263972
+
+```
+
+### Environment
+```{r setup}
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+# pipeline variables
+long.compute <- TRUE
+do.plot <- TRUE
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
+setwd(here::here())   # project root; works in RStudio, knitr and Rscript
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+```
+
+
+
+## Loading dataset {.tabset}
+
+### load dataset
+```{r load_dataset}
+
+TICAtlas <- LoadSeuratRds("data/TICAtlas.rds")
+
+TICAtlas # 92,256 features across 317,111 cells (RNA assay)
+
+head(TICAtlas@meta.data)
+
+# set object defaults 
+DefaultAssay(TICAtlas) <- "RNA"
+Idents(TICAtlas) <- TICAtlas@meta.data$subtype
+
+
+```
+
+### Broad vis of dataset
+```{r broad_dataset_vis}
+
+ 
+output.dir <- "results/Broad_vis/"
+if(!dir.exists(output.dir)){
+  dir.create(output.dir, 
+             recursive = T)}
+
+
+
+library(ggplot2)
+
+# get stats
+head(TICAtlas@meta.data)
+
+# gender
+x <- TICAtlas@meta.data$gender
+table(x)
+length(unique(x))
+# 4 levels \ male, female, unknown, and NA
+
+# Source
+x <- TICAtlas@meta.data$source
+table(x)
+length(unique(x))
+# 13 levels
+
+# subtype
+x <- TICAtlas@meta.data$subtype
+table(x)
+length(unique(x))
+# 13 levels
+
+# cluster_kmeans_k6
+x <- TICAtlas@meta.data$cluster_kmeans_k6
+table(x)
+length(unique(x))
+# 7 levels
+
+# cell_type
+x <- TICAtlas@meta.data$cell_type
+table(x)
+length(unique(x))
+# 25 levels
+
+# patient
+x <- TICAtlas@meta.data$patient
+table(x)
+length(unique(x))
+# 181 levels
+
+
+# plot metadata variables on umap projection
+
+vars.plot <- c("gender", "source", "subtype", "cluster_kmeans_k6", "cell_type")
+
+for(i in seq_along(vars.plot)){
+  
+  print(scCustomize::DimPlot_scCustom(TICAtlas, 
+                                      reduction = "umap", 
+                                      group.by = vars.plot[i], 
+                                      pt.size = 1,
+                                      label = TRUE,
+                                      figure_plot = TRUE)
+  )
+  
+  
+  dev.copy(pdf, paste0(output.dir, "UMAP_TICAtlas_dataset_grouped_by_", vars.plot[i], ".pdf"))
+  dev.off()
+  
+}
+
+# inspect how source and subtype definitions differ
+x <- TICAtlas@meta.data$source
+y <- TICAtlas@meta.data$subtype
+table(x, y)
+  
+  
+
+
+```
+
+
+

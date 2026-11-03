@@ -1,0 +1,184 @@
+---
+title: "Pancancer_NK_atlas_Preprocessing"
+author: "Dillon Corvino"
+date: "07/03/2019"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+Built with R version `r getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+```{r Dataset_Info}
+
+# Data downloaded from 
+# https://zenodo.org/record/8275845
+
+
+```
+
+### Environment
+```{r setup}
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
+setwd(here::here())   # project root; works in RStudio, knitr and Rscript
+
+# pipeline variables
+long.compute <- FALSE
+long.load <- FALSE
+
+# load packages 
+library(SeuratDisk)
+
+
+
+########################################
+# Parallelization of seurat functions
+########################################
+
+parallelization <- TRUE
+
+if(parallelization){
+  library(future)
+  # check the current active plan
+  plan()
+  
+  # detect cores
+  ncores <- parallel::detectCores()
+  ncores <- ncores-5
+  # set plan
+  plan("multisession", workers = ncores)
+  plan()
+  
+  # set max limit for global variables
+  # note this will drastically increase RAM usage, be aware of machine limits
+  # set value is in bites therefore 1000*1024^2 = 1GB Therefore set to 10GBs 
+  options(future.globals.maxSize = 10000 * 1024^2, 
+          future.rng.onMisuse="ignore") 
+}
+
+
+
+# Create output dir
+output.dir <- "results/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+
+```
+
+## Load data {.tabset}
+
+### Convert 5ad file to h5seurat
+```{r convert_files}
+
+# read in .5ad files and convert to seurat format
+if(long.load){
+  # list files 
+  files.input <- list.files("data/", pattern = ".5ad")
+  
+  # change dir and convert files
+  setwd("data/")
+  Convert("comb_CD56_CD16_NK_blood.h5ad", dest = "h5seurat", overwrite = TRUE)
+  Convert("comb_CD56_CD16_NK.h5ad", dest = "h5seurat", overwrite = TRUE)
+  setwd("..")
+  
+}
+
+```
+ 
+
+### Read seurat files
+
+```{r read_data}
+
+if(long.load){
+  
+  # unsure what is contained within .*_blood.h5ad object, if this is just a subset or unique data
+  # regardless, will just use the fuller object for analysis
+  
+  # list files
+  #files.input <- list.files("data", pattern = "h5seurat", full.names = T)
+  
+  # Load files
+  #seurat.list <- lapply(files.input, LoadH5Seurat)
+  #names(seurat.list) <- c("object_1", "object_2")
+  
+  nk.seurat <- LoadH5Seurat("data/comb_CD56_CD16_NK.h5seurat")
+  
+    # format metadata 
+  nk.seurat@meta.data <- nk.seurat@meta.data %>%
+    mutate(tissue = ifelse(meta_tissue %in% c("Normal", "Others"), "non_tumor", as.character(meta_tissue)))
+  
+  
+}
+
+```
+
+
+
+## Dataset visualisation {.tabset}
+
+### Generic overview of dataset
+```{r dataset_overview}
+
+if(long.compute){
+ 
+  colnames(nk.seurat@meta.data)
+  
+  meta.data.vars <- c("tissue", "Majortype", "celltype")
+  
+  for(i in seq_along(meta.data.vars)){
+    print(
+      UMAPPlot(nk.seurat, 
+               group.by = meta.data.vars[i],
+               pt.size = 1)
+)
+    dev.copy(pdf, paste0(output.dir, "UMAP_", meta.data.vars[i], ".pdf"))
+    dev.off()
+    
+  }
+
+  
+}
+
+
+
+```
+

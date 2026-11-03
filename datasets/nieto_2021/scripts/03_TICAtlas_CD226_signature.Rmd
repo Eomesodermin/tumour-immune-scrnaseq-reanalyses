@@ -1,0 +1,306 @@
+---
+title: "TICAtlas_dataset"
+author: "Dillon Corvino"
+date: "15/02/2024"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+Built with R version `r getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+```{r Dataset_Info}
+
+
+
+```
+
+# Note code is written very sloppy as a quick assesment of cd226 expression. needs to be cleaned up
+
+### Environment
+```{r setup}
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+# pipeline variables
+long.compute <- TRUE
+do.plot <- TRUE
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
+setwd(here::here())   # project root; works in RStudio, knitr and Rscript
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+
+# note to use sccus and density plots with nebulosa need to downgrade ggplot 
+ggplot2_switch_version(desired_version = "3.4.4")
+# need to downgrade to 3.4.4 for nebulosa
+
+```
+
+
+
+## Loading dataset {.tabset}
+
+### load dataset
+```{r load_dataset}
+
+TICAtlas <- LoadSeuratRds("data/TICAtlas.rds")
+
+TICAtlas # 92,256 features across 317,111 cells (RNA assay)
+
+head(TICAtlas@meta.data) 
+
+# set object defaults 
+DefaultAssay(TICAtlas) <- "RNA"
+Idents(TICAtlas) <- TICAtlas@meta.data$subtype
+
+# filter out OC subtype 
+y <- TICAtlas@meta.data$subtype
+table(y)/1000
+# OC has lowest number of cells and therefore downstream analysis is highly variable just due to low number 
+# remove OC from dataset
+
+# remove OC subtype
+Idents(TICAtlas) <- TICAtlas@meta.data$subtype
+TICAtlas <- subset(TICAtlas, idents = "OC", invert = T)
+y <- TICAtlas@meta.data$subtype
+table(y)/1000
+
+
+```
+
+### Prepare dataset / read and filter for CD4 / or load dataset
+
+```{r read_dataset_pancancer}
+
+if(long.compute){
+  head(TICAtlas@meta.data)
+  
+  # subset for CD4 subsets only
+  Idents(TICAtlas) <- TICAtlas@meta.data$cell_type
+  unique(Idents(TICAtlas))
+  
+  
+  CD4.TICAtlas <- subset(TICAtlas, idents = c("Recently activated CD4 T cells", 
+                                              "Naive-memory CD4 T cells", 
+                                              "Transitional memory CD4 T cells",
+                                              "Th17 cells", 
+                                              "Naive T cells", 
+                                              "Regulatory T cells", 
+                                              "T helper cells", 
+                                              "Proliferative T cells"))
+  
+  library(harmony)
+  # Normalise and harmonize dataset and calculate umap projection
+  CD4.TICAtlas <- 
+    CD4.TICAtlas %>%
+    NormalizeData() %>%
+    FindVariableFeatures() %>%
+    ScaleData() %>%
+    RunPCA() %>%
+    harmony::RunHarmony(reduction.use = "pca",
+                        group.by.vars = c("patient", "subtype"), 
+                        plot_convergence = TRUE, 
+                        verbose = TRUE) %>%
+    RunUMAP(reduction = "harmony", 
+            dims = 1:20) %>%
+    FindNeighbors(reduction = "harmony",
+                  dims = 1:20) %>%
+    FindClusters(resolution = 0.5)
+  
+  
+  # save filtered dataset
+  SaveH5Seurat(CD4.TICAtlas, 
+               "data/CD4_TICAtlas.h5Seurat",
+               overwrite = TRUE)
+  
+  
+}else{
+  
+  #pancancer.cd8 <- LoadH5Seurat("data/external_datasets/pancancer_cd8_normed.h5Seurat")
+  
+}
+
+```
+
+
+### Dataset overview
+```{r dataset_overview}
+
+
+output.dir <- "results/CD226/"
+if(!dir.exists(output.dir)){
+  dir.create(output.dir, 
+             recursive = T)}
+
+
+DefaultAssay(TICAtlas) <- "RNA"
+
+
+
+TICAtlas@meta.data
+
+DimPlot_scCustom(CD4.TICAtlas,
+                 pt.size = 2,
+                 raster = TRUE,
+                 raster.dpi = c(2400, 2400),
+                 label = TRUE,
+                 group.by = "cell_type") + NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "TICAtlas_CD4_grouped_by_celltype.pdf"))
+dev.off()
+
+
+DimPlot_scCustom(CD4.TICAtlas,
+                 pt.size = 2,
+                 raster = TRUE,
+                 raster.dpi = c(2400, 2400),
+                 label = TRUE,
+                 group.by = "subtype") + NoLegend()
+
+
+dev.copy(pdf, paste0(output.dir, "TICAtlas_CD4s_grouped_by_subtype.pdf"))
+dev.off()
+
+
+DimPlot_scCustom(CD4.TICAtlas,
+                 pt.size = 2,
+                 raster = TRUE,
+                 raster.dpi = c(2400, 2400),
+                 label = TRUE,
+                 group.by = "subtype")
+
+dev.copy(pdf, paste0(output.dir, "TICAtlas_CD4s_grouped_by_subtype_definition.pdf"))
+dev.off()
+
+
+DimPlot_scCustom(CD4.TICAtlas,
+                 pt.size = 2,
+                 raster = TRUE,
+                 raster.dpi = c(2400, 2400),
+                 label = TRUE,
+                 group.by = "cell_type")
+
+dev.copy(pdf, paste0(output.dir, "TICAtlas_CD4s_grouped_by_cell_type_definition.pdf"))
+dev.off()
+
+
+```
+
+
+
+### CD226 expression
+```{r CD226_expression}
+
+
+output.dir <- "results/CD226/"
+if(!dir.exists(output.dir)){
+  dir.create(output.dir, 
+             recursive = T)}
+
+
+DefaultAssay(TICAtlas) <- "RNA"
+
+
+# sorted vln plot of cytotoxicity 
+VlnPlot_scCustom(CD4.TICAtlas, 
+                 feature = "CD226", 
+                 sort = TRUE,
+                 group.by = "cell_type",
+                 pt.size = 0.1) + NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "TICAtlas_CD4s_vln_plot_CD226.pdf"))
+dev.off()
+
+# subset for cd226 expression only 
+
+# Subset cells with CD226 expression greater than 0
+seurat_subset <- subset(CD4.TICAtlas, subset = CD226 > 0)
+
+VlnPlot_scCustom(seurat_subset, 
+                 feature = "CD226", 
+                 sort = TRUE,
+                 group.by = "cell_type",
+                 pt.size = 0) + NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "TICAtlas_CD4s_vln_plot_CD226_CD226_expressing.pdf"))
+dev.off()
+
+
+
+
+# density plot of cytotoxicity singature 
+
+scCustomize::Plot_Density_Custom(CD4.TICAtlas, 
+                                 features = "CD226", 
+                                 custom_palette = batlow.pal)
+
+ggsave(paste0(output.dir, "TICAtlas_CD4s_density_plot_CD226.tiff"), width = 12, height = 12, units = "in", device = "tiff", dpi = 320)
+
+dev.copy(pdf, paste0(output.dir, "TICAtlas_CD4s_density_plot_CD226.pdf"))
+dev.off()
+
+
+table(CD4.TICAtlas@meta.data$subtype, CD4.TICAtlas@meta.data$cell_type)
+
+
+
+
+if (!requireNamespace("remotes", quietly = TRUE)) {
+    install.packages("remotes")
+}
+remotes::install_github("huayc09/SeuratExtend")
+
+library(SeuratExtend)
+VlnPlot2(seurat_subset, 
+                 feature = "CD226", 
+                 sort = TRUE,
+                 group.by = "cell_type",
+         stat.method = "wilcox.test", 
+         hide.ns = TRUE)
+dev.copy(pdf, paste0(output.dir, "TICAtlas_CD4s_vln_with_stats_cd226_only.pdf"))
+dev.off()
+
+ClusterDistrBar(origin = seurat_subset@meta.data$subtype, 
+                cluster = seurat_subset@meta.data$cell_type, 
+                rev = TRUE,
+                normalize = T)
+
+dev.copy(pdf, paste0(output.dir, "TICAtlas_CD4s_cluster_distribution_CD226_expressing_cells_normed.pdf"))
+dev.off()
+```
+
+

@@ -1,0 +1,891 @@
+---
+title: "Immune Landscape of Viral- and Carcinogen-Driven Head and Neck Cancer"
+author: "DillonCorvino"
+date: "22/06/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+## Dataset {.tabset}
+
+### Dataset info
+```{r Dataset_details}
+
+# Manuscript title: "Immune Landscape of Viral- and Carcinogen-Driven Head and Neck Cancer"
+# Authors: Anthony R. Cillo, Cornelius H.L. Ku€rten, Tracy Tabib, ..., Tullia C. Bruno, Robert L. Ferris, Dario A.A. Vignali
+# Journal: Immunity
+# Year: 2020
+# DOI: 10.1016/j.immuni.2019.11.014
+## Abstract: Head and neck squamous cell carcinoma (HNSCC) arises through exposure to environmental carcino- gens or malignant transformation by human papillomavirus (HPV). Here, we assessed the transcriptional profiles of 131,224 single cells from peripheral and intra-tumoral immune populations from patients with HPV– and HPV+ HNSCC and healthy donors. Immune cells within tumors of HPV and HPV HNSCC displayed a spectrum of transcriptional signatures, with helper CD4+ T cells and B cells being relatively divergent and CD8+ T cells and CD4+ regulatory T cells being relatively similar. Transcriptional results were contextualized through multispectral immuno- fluorescence analyses and evaluating putative cell- cell communication based on spatial proximity. These analyses defined a gene expression signature associated with CD4+ T follicular helper cells that is associated with longer progression-free survival in HNSCC patients. The datasets and analytical ap- proaches herein provide a resource for the further study of the impact of immune cells on viral- and carcinogen-induced cancers.
+
+
+# Total of 63 samples were analyzed by scRNAseq. 
+# 26 HNSCC patients (18 HPVNeg and 8 HPVPos)
+# HNSCC patients have paired PBMC and TIL samples
+# 6 PBMC from healthy donors
+# 5 healthy donor tonsils 
+
+```
+
+## Set up {.tabset}
+
+### Environment
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
+setwd(here::here())   # project root; works in RStudio, knitr and Rscript
+
+# Load packages
+source("scripts/Load_packages.R", local = knitr::knit_global())
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+
+# pipeline variables
+quick.load <- FALSE
+
+```
+
+### Reading in data
+```{r reading_data}
+
+############################################################
+# Data comes from Cillo et al., 2020 Immunity
+# GSE139324
+############################################################
+
+###################################
+# Read and formatt samples
+###################################
+
+# Load files
+dir.var <- list.dirs("data/Cillo_data", recursive = F)
+
+# Initialize an empty vector
+result_vector <- c()
+
+# ensure env is clean
+rm(named.vect)
+
+for(i in seq_along(dir.var)){
+  
+  named.vect <- list.dirs(dir.var[i])
+  named.vect <- named.vect[-1]
+  names(named.vect) <- gsub(paste0(dir.var[i], "/"), "", named.vect)
+  
+  # Add data to the result_vector
+  result_vector <- c(result_vector, named.vect)
+  
+}
+
+
+
+Cillo.data <- Read10X(data.dir = result_vector)
+
+# 26 TIL samples from HNSCC patients
+
+
+# Format barcode IDs to allow matching with cillo metadata
+colnames(Cillo.data)
+colnames(Cillo.data) <- gsub("-1$", "", colnames(Cillo.data))
+colnames(Cillo.data)
+
+
+# Read in metadata provided by Anthony Cillo 
+meta.data <- read.delim("data/Cillo_HNSCC_cell_cluster_annotations.21.01.15.tsv")
+
+# note / meta data includes annotations for HD_PBMC_Pt2 which have barcode of "TC" this is an error somewhere in the file provided by Cillo 
+# therefore these annotations need to be removed 
+barcode.length <- nchar(meta.data$cell_barcodes)
+summary(barcode.length)
+meta.data[barcode.length < 16, ]
+sum(barcode.length < 16) # 2,434 cells will be removed 
+
+# keep only annotations with a barcode length of 16 characters
+meta.data <- meta.data[barcode.length == 16, ]
+
+
+head(meta.data)
+sort(unique(meta.data$overall_clusterID))
+unique(meta.data$patient_id)
+unique(meta.data$overall_clusterID)
+unique(meta.data$cell_type)
+unique(meta.data$sample_origin)
+unique(meta.data$cd8_cells_clusterID)
+
+
+# change annotation in metadata to match samples
+# Define a regular expression pattern to match "_PtX_random16"
+pattern <- "_Pt\\d+_\\w{16}"
+
+# Remove the matched pattern from the input string
+result_string <- str_replace(colnames(Cillo.data), pattern, "")
+unique(result_string)
+
+
+meta.data$sample_origin <- gsub("^TIL", "TILs", meta.data$sample_origin)
+meta.data$sample_origin <- gsub("^tonsil", "Tonsil", meta.data$sample_origin)
+
+
+
+# format metadata
+sum(duplicated(meta.data$cell_barcode))
+
+# need to append metadata to barcode to match with name format of data
+# format is "HD_PBMC_Pt*_barcode" or "HNSCC_PBMC_Pt*_barcode"
+
+unique(meta.data$patient_id)
+
+# firstly create new column of disease status 
+meta.data$disease <- gsub("_.*", "", meta.data$patient_id)
+unique(meta.data$disease)
+
+# note all Tonsil is derived from healthy donors. therefore annotations should just be HD and HNSCC
+# Currently HD, Tonsil and HNSCC
+# need to change Tonsil to HD 
+meta.data$disease[meta.data$disease == "Tonsil"] <- "HD"
+unique(meta.data$disease)
+
+
+# next extract patient number 
+meta.data$patient_number <- gsub(".*_", "", meta.data$patient_id)
+sort(as.numeric(unique(meta.data$patient_number))) # max of 26 
+
+# build annotation 
+meta.data$sample_name <- paste0(meta.data$disease, "_", meta.data$sample_origin, "_Pt", meta.data$patient_number)
+
+# append barcode 
+meta.data$barcode <- paste0(meta.data$sample_name, "_", meta.data$cell_barcode)
+
+
+# sanity check 
+sum(duplicated(meta.data$barcode))
+
+
+# assign rownames 
+rownames(meta.data) <- meta.data$barcode
+
+
+
+unique(meta.data$patient_id)
+unique(meta.data$cell_type)
+unique(meta.data$sample_origin)
+unique(meta.data$disease)
+
+
+# check length of data 
+nrow(meta.data) # 130,849 cells 
+ncol(Cillo.data) # 133,180 cells 
+
+# 2,331 cells are not present in metadata 
+# much of this could be explained by <16 character barcodes (2,434) // unsure why these numbers are not in agreement
+
+
+
+# Initialize the Seurat object with the raw (non-normalized data).  Keep all
+# genes expressed in >= 3 cells. Keep all cells with at
+# least 200 detected genes
+Cillo.seurat <- CreateSeuratObject(counts = Cillo.data,
+                                   meta.data = meta.data,
+                                   min.cells = 3,
+                                   min.features = 200)
+# Warning: Some cells in meta.data not present in provided counts matrix
+
+
+Cillo.seurat 
+# 24,703 genes 133,005 cells
+
+# many samples do not have metadata annotation. these samples will be removed
+Cillo.seurat@meta.data
+
+unique(Cillo.seurat@meta.data$sample_origin)
+
+
+
+sum(is.na(Cillo.seurat@meta.data$cell_barcodes)) # 9,495 samples 
+length(Cillo.seurat@meta.data$cell_barcodes) # 133,005 
+(9495/133005)*100 # 7.13% is NA
+
+# inspect NA entries 
+na.logic <- is.na(Cillo.seurat@meta.data$cell_barcodes)
+x <- rownames(Cillo.seurat@meta.data)[na.logic]
+
+pattern <- "_Pt\\d+_\\w{16}"
+
+# Remove the matched pattern from the input string
+result_string <- str_replace(x, pattern, "")
+unique(result_string)
+table(result_string)
+# NAs present across all types, particularly enriched in HNSCC samples
+# unable to identify any patterns, hard to tell if this is just because metadata is incomplete from Cillo 
+# or if filtering of the dataset was applied by Cillo 
+# proceed by removing NA entries
+
+
+na.logic <- is.na(Cillo.seurat@meta.data$cell_barcodes)
+cells.keep <- rownames(Cillo.seurat@meta.data)[!na.logic]
+
+Cillo.seurat <- subset(Cillo.seurat, cells = cells.keep)
+
+Cillo.seurat # 24,703 genes and 123,510 cells
+
+
+# set idents 
+Idents(Cillo.seurat) <- Cillo.seurat@meta.data$sample_origin
+
+unique(Cillo.seurat@meta.data$sample_origin)
+
+# remove large data 
+rm(Cillo.data)
+gc()
+
+```
+
+## QC and Normalisation {.tabset}
+
+### QC & Normalisation
+```{r QC_and_normalisation}
+
+
+if(long.compute){
+  # create output dir
+  output.dir <- "results/QC/"
+  if(!dir.exists(output.dir)){
+    dir.create(output.dir, 
+               recursive = T)}
+  
+  
+  library(scCustomize)
+  
+  # set idents to sampleID
+  Idents(Cillo.seurat) <- Cillo.seurat@meta.data$sample_origin
+  
+  # Add mitochondrial and ribosomal gene percentages
+  
+  Cillo.seurat <- Add_Mito_Ribo_Seurat(seurat_object = Cillo.seurat, species = "Human") 
+  
+  # Add cell complexity/novelty QC metric
+  Cillo.seurat <- Add_Cell_Complexity_Seurat(seurat_object = Cillo.seurat)
+  
+  
+  # Setting cutoff values 
+  feature.low <- 200
+  feature.high <- 3000
+  umi.low <- 1000
+  umi.high <- 20000
+  mito.high <- 10
+  ribo.high <- 5
+  complexity.high <- 0.8
+  
+  
+  ########################
+  # QC plots
+  ########################
+  
+  # nFeatures
+  print(
+    QC_Plots_Genes(seurat_object = Cillo.seurat, 
+                   low_cutoff = feature.low, 
+                   high_cutoff = feature.high,
+                   pt.size = 0) #how many genes per cell? See where to set the cutoffs later
+  )
+  
+  dev.copy(pdf, paste0(output.dir, "QC_genes.pdf"))
+  dev.off()
+  
+  
+  # UMI
+  print(
+    QC_Plots_UMIs(seurat_object = Cillo.seurat, 
+                  low_cutoff = umi.low, 
+                  high_cutoff = umi.high, 
+                  y_axis_log = T,
+                  pt.size = 0)
+  )
+  
+  dev.copy(pdf, paste0(output.dir, "QC_UMI.pdf"))
+  dev.off()
+  
+  
+  # Mito percentage
+  print(
+    QC_Plots_Mito(seurat_object = Cillo.seurat, 
+                  high_cutoff = mito.high,
+                  pt.size = 0)
+  )
+  
+  dev.copy(pdf, paste0(output.dir, "QC_mito.pdf"))
+  dev.off()
+  
+  
+  # Ribo percentage
+  print(
+    QC_Plots_Feature(seurat_object = Cillo.seurat,
+                     feature = "percent_ribo",
+                     high_cutoff = ribo.high,
+                     pt.size = 0)
+  )
+  
+  dev.copy(pdf, paste0(output.dir, "QC_Ribo.pdf"))
+  dev.off()
+  
+  
+  # Complexity
+  print(
+    QC_Plots_Complexity(seurat_object = Cillo.seurat, 
+                        high_cutoff = complexity.high,
+                        pt.size = 0)
+  ) 
+  
+  dev.copy(pdf, paste0(output.dir, "QC_complexity.pdf"))
+  dev.off()
+  
+  
+  # Filter dataset
+  
+  Cillo.seurat <- subset(Cillo.seurat, 
+                         subset = nFeature_RNA > feature.low & 
+                           nFeature_RNA < feature.high & 
+                           percent_mito < mito.high & 
+                           percent_ribo > ribo.high & 
+                           log10GenesPerUMI > complexity.high)
+  
+  
+  # nFeatures filtered matrix
+  print(
+    QC_Plots_Genes(seurat_object = Cillo.seurat, 
+                   low_cutoff = feature.low, 
+                   high_cutoff = feature.high,
+                   pt.size = 0) #how many genes per cell? See where to set the cutoffs later
+  )
+  
+  dev.copy(pdf, paste0(output.dir, "QC_genes_filtered.pdf"))
+  dev.off()
+  
+  
+  # UMI filtered matrix
+  print(
+    QC_Plots_UMIs(seurat_object = Cillo.seurat, 
+                  low_cutoff = umi.low, 
+                  high_cutoff = umi.high, 
+                  y_axis_log = T,
+                  pt.size = 0)
+  )
+  
+  dev.copy(pdf, paste0(output.dir, "QC_UMI_filtered.pdf"))
+  dev.off()
+  
+  # Ribo filtered percentage
+  print(
+    QC_Plots_Feature(seurat_object = Cillo.seurat,
+                     feature = "percent_ribo",
+                     high_cutoff = ribo.high,
+                     pt.size = 0)
+  )
+  
+  dev.copy(pdf, paste0(output.dir, "QC_Ribo_filtered.pdf"))
+  dev.off()
+  
+}
+
+
+
+```
+
+
+### SCT normalise data
+
+```{r SCT_normalisation}
+
+if(long.compute){
+  
+  # Normalise and scale with SCTransform 
+  # Note used vst.flavor = "v2" as this is updated, fixing some errors
+  # additionally, allows for SCT data slot to serve as input for all visualisation and DEGs 
+  # Just need to ensure DEG calculations are pre-faced with PrepSCTFindMarkers()
+  
+  Cillo.seurat <- Seurat::SCTransform(Cillo.seurat, 
+                                      method = "glmGamPoi", 
+                                      vars.to.regress = c("percent_mito"), 
+                                      vst.flavor = "v2",
+                                      verbose = TRUE) 
+  
+  
+  
+  
+}
+
+```
+
+
+## Unbiased Clustering {.tabset}
+
+### Clustering
+```{r PCA_and_cluster_identification}
+
+
+if(long.compute){
+  
+  
+  ################################
+  # PCA and cluster identification
+  ################################
+  
+  DefaultAssay(Cillo.seurat) <- "SCT"
+  
+  # Set seed for reproducibility
+  set.seed(42)
+  
+  output.dir <- "results/QC/"
+  
+  #Find variable features
+  Cillo.seurat <- FindVariableFeatures(Cillo.seurat)
+  
+  # scale data
+  Cillo.seurat <- ScaleData(Cillo.seurat)
+  
+  # Calculate PCA
+  Cillo.seurat <- Seurat::RunPCA(Cillo.seurat, 
+                                 npcs = 20, 
+                                 verbose = TRUE, 
+                                 rev.pca = TRUE,
+                                 seed.use = 42)
+  
+  
+  # Find neighbours
+  Cillo.seurat <- Seurat::FindNeighbors(Cillo.seurat, 
+                                        dims = 1:20)
+  
+  
+  # Find clusters
+  res.var <- 0
+  
+  while (res.var <= 1) {
+    Cillo.seurat <- Seurat::FindClusters(Cillo.seurat, 
+                                         resolution = res.var)  
+    res.var = res.var + 0.1
+  }
+  
+  #determine right cluster resolution
+  #install.packages("clustree")
+  library(clustree) # clusttree needs to be loaded, error occurs if just call function from namespace
+  
+  head(Cillo.seurat[[]])
+  
+  clustree::clustree(Cillo.seurat, 
+                     prefix = "SCT_snn_res.",
+                     layout = "sugiyama")
+  
+  dev.copy(pdf, paste0(output.dir, "clusttree.pdf"))
+  dev.off()
+  
+  # resolution at 0.6 seems most stable and endpoint for when mixtures start to begin.
+  
+  # Find clusters
+  Cillo.seurat <- Seurat::FindClusters(Cillo.seurat, 
+                                       resolution = 0.6)
+  
+  
+  
+  
+  #################################################################
+  # Determine statistically significant principal components
+  #################################################################
+  
+  
+  ElbowPlot(Cillo.seurat,
+            ndims = 20)
+  
+  dev.copy(pdf,  paste0(output.dir, "PC_elbowplot.pdf"))
+  dev.off()
+  
+}
+
+
+
+```
+
+
+### UMAP and tSNE dim Reduction
+```{r Dim_reduction}
+
+if(long.compute){
+  
+  # Create output dir
+  output.dir <- "results/figures/tSNE_dim_reduction/"
+  
+  if(!dir.exists(output.dir)){
+    dir.create(output.dir, 
+               recursive = TRUE)}
+  
+  
+  # Calculate tSNE
+  Cillo.seurat <- Seurat::RunTSNE(Cillo.seurat, 
+                                  reduction = "pca",
+                                  dims = 1:20,
+                                  perplexity = 30,
+                                  method = "FIt-SNE",
+                                  seed.use = 42,
+                                  dim.embed = 2)
+  colnames(Cillo.seurat@meta.data)
+  vars.plot <- c("cell_type", "sample_origin", "seurat_clusters", "overall_clusterID", "disease")
+  
+  # Plot tSNE
+  
+  for(i in seq_along(vars.plot)) {
+    
+    print(TSNEPlot(Cillo.seurat,
+                   group.by = vars.plot[i],
+                   pt.size = 1))
+    
+    dev.copy(pdf, paste0(output.dir, "tSNE_", vars.plot[i], ".pdf"))
+    dev.off()
+    
+  }  
+  
+  
+  # Create output dir
+  output.dir <- "results/figures/UMAP_dim_reduction/"
+  
+  if(!dir.exists(output.dir)){
+    dir.create(output.dir, 
+               recursive = TRUE)}
+  
+  # Calculate UMAP
+  Cillo.seurat <- Seurat::RunUMAP(Cillo.seurat, 
+                                  reduction = "pca",
+                                  dims = 1:20,
+                                  umap.method = "uwot", 
+                                  n.neighbors = 45, # 5 to 50 // 45
+                                  min.dist = 0.5, # Sensible values are in the range 0.001 to 0.5 // 0.5
+                                  seed.use = 42)
+  
+  # Plot UMAP
+  
+  for(i in seq_along(vars.plot)) {
+    
+    print(UMAPPlot(Cillo.seurat,
+                   group.by = vars.plot[i],
+                   pt.size = 1))
+    
+    dev.copy(pdf, paste0(output.dir, "UMAP_", vars.plot[i], ".pdf"))
+    dev.off()
+    
+  } 
+  
+  
+  
+  # Adding author (Cillo) claculated tSNE dim coordinates 
+  
+  
+  
+  
+  
+  
+  # Note, first file that Cillo sent had the tSNE coordinates, but had errors in other sections of the metadata
+  # newer versions Cillo sent had corrected metadata but didnt include tSNE coordinates, therefore need to take from older metadata 
+  
+  FItSNE_coordinates <- read.csv("data/Cillo_HNSCC_FItSNE_coordinates.tsv", 
+                                 sep = "\t")
+  
+  FItSNE_coordinates
+  
+  
+  # need to make barcodes match with dataset labeling of cells 
+  unique(FItSNE_coordinates$sample)
+  unique(FItSNE_coordinates$sample_origin)
+  
+  # amend sample_origin to match with formatting of data 
+  FItSNE_coordinates$sample_origin[FItSNE_coordinates$sample_origin == "tonsil"] <- "Tonsil"
+  FItSNE_coordinates$sample_origin[FItSNE_coordinates$sample_origin == "TIL"] <- "TILs"
+  
+  # Extract "HD" or "HNSCC" from each string and save it in the "disease" column
+  FItSNE_coordinates$disease <- str_extract(FItSNE_coordinates$sample, "HD|HNSCC")
+  unique(FItSNE_coordinates$disease)
+  
+  # Extract the numeric part from each string and save it as "PtX" in the "patient_number" column
+  FItSNE_coordinates$patient_number <- str_extract(FItSNE_coordinates$sample, "\\d+")
+  FItSNE_coordinates$patient_number <- paste0("Pt", FItSNE_coordinates$patient_number)
+  unique(FItSNE_coordinates$patient_number)
+  
+  
+  # build annotation 
+  FItSNE_coordinates$sample_name <- paste0(FItSNE_coordinates$disease, "_", FItSNE_coordinates$sample_origin, "_", FItSNE_coordinates$patient_number)
+  
+  # append barcode 
+  FItSNE_coordinates$barcode <- paste0(FItSNE_coordinates$sample_name, "_", FItSNE_coordinates$cell_barcode)
+  min(nchar(FItSNE_coordinates$cell_barcode)) # does not have same issue as other metadata which had messed up barcodes 
+  FItSNE_coordinates$barcode
+  
+  
+  nrow(FItSNE_coordinates) # 131,224
+  Cillo.seurat # 118,281 cells
+  
+  # remove info for cells filtered out of dataset
+  keep.logic <- FItSNE_coordinates$barcode %in% Cillo.seurat@meta.data$barcode
+  sum(keep.logic) # 118,281 cells
+  FItSNE_coordinates <- FItSNE_coordinates[keep.logic, ]
+  
+  # add to metadata / first match up the order
+  x <- match(FItSNE_coordinates$barcode, Cillo.seurat@meta.data$barcode)
+  
+  Cillo.seurat@meta.data$FItSNE_1 <- FItSNE_coordinates$FItSNE_1[x]
+  Cillo.seurat@meta.data$FItSNE_2 <- FItSNE_coordinates$FItSNE_2[x]
+  
+  
+  # now its in the right order, extract and add as a dim reduction object
+  keep.vec <- grepl("FItSNE_", colnames(Cillo.seurat@meta.data))
+  
+  cillo_tsne <- Cillo.seurat@meta.data[,keep.vec]
+  cillo_tsne <- as.matrix(cillo_tsne)
+  
+  # Add data as a dim reduction
+  Cillo.seurat[["FItSNE"]] <- CreateDimReducObject(embeddings = cillo_tsne,
+                                                   key = "FItSNE_",
+                                                   assay = DefaultAssay(Cillo.seurat))
+  
+  # We can now use this as you would any other dimensional reduction in all downstream functions
+  DimPlot(Cillo.seurat, 
+          reduction = "FItSNE",
+          pt.size = 0.5, 
+          group.by = "cell_type")
+  
+  
+  
+  # plot var of interest on this dim reduction 
+  for(i in seq_along(vars.plot)) {
+    
+    print(DimPlot(Cillo.seurat,
+                  reduction = "FItSNE",
+                  group.by = vars.plot[i],
+                  pt.size = 1))
+    
+    dev.copy(pdf, paste0(output.dir, "FItSNE_", vars.plot[i], ".pdf"))
+    dev.off()
+    
+  } 
+  
+  
+  
+  
+}
+
+
+```
+
+
+### Export seurat object
+```{r export_seurat}
+
+# Create output dir
+output.dir <- "saves/"
+
+if(!dir.exists(output.dir)){
+  dir.create(output.dir, 
+             recursive = TRUE)}
+
+library(SeuratDisk)
+
+SaveH5Seurat(Cillo.seurat, 
+             filename = paste0(output.dir, "Cillo_seurat.h5Seurat"), 
+             overwrite = TRUE, 
+             verbose = TRUE)  
+
+
+```
+
+### Subset for CD8 cells only and recalculate Dim reductions
+```{r CD8_only}
+
+# Create output dir
+output.dir <- "results/QC/CD8_only/"
+
+if(!dir.exists(output.dir)){
+  dir.create(output.dir, 
+             recursive = TRUE)}
+
+
+
+# Subset dataset for CD8
+Idents(Cillo.seurat) <- Cillo.seurat@meta.data$cell_type
+unique(Cillo.seurat@meta.data$cell_type)
+
+Cillo.CD8 <- subset(Cillo.seurat, idents = "cd8.cells")
+
+# Set Idents 
+DefaultAssay(Cillo.CD8) <- "SCT"
+
+# Set seed for reproducibility
+set.seed(42)
+
+#Find variable features
+Cillo.CD8 <- FindVariableFeatures(Cillo.CD8)
+
+# scale data
+Cillo.CD8 <- ScaleData(Cillo.CD8)
+
+# Calculate PCA
+Cillo.CD8 <- Seurat::RunPCA(Cillo.CD8, 
+                            npcs = 20, 
+                            verbose = TRUE, 
+                            rev.pca = TRUE,
+                            seed.use = 42)
+
+
+# Find neighbours
+Cillo.CD8 <- Seurat::FindNeighbors(Cillo.CD8, 
+                                   dims = 1:20)
+
+
+# Find clusters
+res.var <- 0
+
+while (res.var <= 1) {
+  Cillo.CD8 <- Seurat::FindClusters(Cillo.CD8, 
+                                    resolution = res.var)  
+  res.var = res.var + 0.1
+}
+
+#determine right cluster resolution
+#install.packages("clustree")
+library(clustree) # clusttree needs to be loaded, error occurs if just call function from namespace
+
+head(Cillo.CD8[[]])
+
+clustree::clustree(Cillo.CD8, 
+                   prefix = "SCT_snn_res.",
+                   layout = "sugiyama")
+
+dev.copy(pdf, paste0(output.dir, "clusttree.pdf"))
+dev.off()
+
+# resolution at 0.6 seems most stable and endpoint for when mixtures start to begin.
+
+# Find clusters
+Cillo.CD8 <- Seurat::FindClusters(Cillo.CD8, 
+                                     resolution = 0.6)
+
+
+
+
+  # Create output dir
+  output.dir <- "results/figures/CD8_only/"
+  
+  if(!dir.exists(output.dir)){
+    dir.create(output.dir, 
+               recursive = TRUE)}
+  
+  
+  # Calculate tSNE
+  Cillo.CD8 <- Seurat::RunTSNE(Cillo.CD8, 
+                                  reduction = "pca",
+                                  dims = 1:20,
+                                  perplexity = 30,
+                                  method = "FIt-SNE",
+                                  seed.use = 42,
+                                  dim.embed = 2)
+  
+  colnames(Cillo.CD8@meta.data)
+  vars.plot <- c("cell_type", "sample_origin", "seurat_clusters", "cd8_cells_clusterID", "disease")
+  
+  # Plot tSNE
+  
+  for(i in seq_along(vars.plot)) {
+    
+    print(TSNEPlot(Cillo.CD8,
+                   group.by = vars.plot[i],
+                   pt.size = 1))
+    
+    dev.copy(pdf, paste0(output.dir, "tSNE_", vars.plot[i], ".pdf"))
+    dev.off()
+    
+  }  
+  
+ 
+  # Calculate UMAP
+  Cillo.CD8 <- Seurat::RunUMAP(Cillo.CD8, 
+                                  reduction = "pca",
+                                  dims = 1:20,
+                                  umap.method = "uwot", 
+                                  n.neighbors = 45, # 5 to 50 // 45
+                                  min.dist = 0.5, # Sensible values are in the range 0.001 to 0.5 // 0.5
+                                  seed.use = 42)
+  
+  # Plot UMAP
+  
+  for(i in seq_along(vars.plot)) {
+    
+    print(UMAPPlot(Cillo.CD8,
+                   group.by = vars.plot[i],
+                   pt.size = 1))
+    
+    dev.copy(pdf, paste0(output.dir, "UMAP_", vars.plot[i], ".pdf"))
+    dev.off()
+    
+  } 
+  
+
+  
+  # Cillo original author Dim Reduction 
+  
+    
+  # plot var of interest on this dim reduction 
+  for(i in seq_along(vars.plot)) {
+    
+    print(DimPlot(Cillo.CD8,
+                  reduction = "FItSNE",
+                  group.by = vars.plot[i],
+                  pt.size = 1))
+    
+    dev.copy(pdf, paste0(output.dir, "FItSNE_", vars.plot[i], ".pdf"))
+    dev.off()
+    
+  } 
+
+```
+
+
+### Export CD8 only object
+```{r export_CD8_seurat}
+
+# Create output dir
+output.dir <- "saves/"
+
+if(!dir.exists(output.dir)){
+  dir.create(output.dir, 
+             recursive = TRUE)}
+
+library(SeuratDisk)
+
+SaveH5Seurat(Cillo.CD8, 
+             filename = paste0(output.dir, "Cillo_CD8_seurat.h5Seurat"), 
+             overwrite = TRUE, 
+             verbose = TRUE)  
+
+
+```
+

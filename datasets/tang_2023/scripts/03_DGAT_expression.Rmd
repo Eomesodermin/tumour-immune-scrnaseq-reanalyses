@@ -1,0 +1,319 @@
+---
+title: "DGAT_expression"
+author: "Dillon Corvino"
+date: "07/03/2019"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+Built with R version `r getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+```{r Dataset_Info}
+
+# Data downloaded from 
+# https://zenodo.org/record/8275845
+
+
+```
+
+### Environment
+```{r setup}
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
+setwd(here::here())   # project root; works in RStudio, knitr and Rscript
+
+# pipeline variables
+long.compute <- FALSE
+long.load <- FALSE
+
+# load packages 
+library(SeuratDisk)
+library(Seurat)
+library(scCustomize)
+
+########################################
+# Parallelization of seurat functions
+########################################
+
+parallelization <- TRUE
+
+if(parallelization){
+  library(future)
+  # check the current active plan
+  plan()
+  
+  # detect cores
+  ncores <- parallel::detectCores()
+  ncores <- ncores-5
+  # set plan
+  plan("multisession", workers = ncores)
+  plan()
+  
+  # set max limit for global variables
+  # note this will drastically increase RAM usage, be aware of machine limits
+  # set value is in bites therefore 1000*1024^2 = 1GB Therefore set to 10GBs 
+  options(future.globals.maxSize = 10000 * 1024^2, 
+          future.rng.onMisuse="ignore") 
+}
+
+
+
+# Create output dir
+output.dir <- "results/DGAT/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+
+# colour scheme 
+batlow.pal <- usefulfunctions::Get.batlow()
+
+
+```
+
+## Load data {.tabset}
+
+
+### Read seurat files
+
+```{r read_data}
+
+if(long.load){
+  
+  # unsure what is contained within .*_blood.h5ad object, if this is just a subset or unique data
+  # regardless, will just use the fuller object for analysis
+  
+  # list files
+  #files.input <- list.files("data", pattern = "h5seurat", full.names = T)
+  
+  # Load files
+  #seurat.list <- lapply(files.input, LoadH5Seurat)
+  #names(seurat.list) <- c("object_1", "object_2")
+  
+  nk.seurat <- LoadH5Seurat("data/comb_CD56_CD16_NK.h5seurat")
+  
+    # format metadata 
+  nk.seurat@meta.data <- nk.seurat@meta.data %>%
+    mutate(tissue = ifelse(meta_tissue %in% c("Normal", "Others"), "non_tumor", as.character(meta_tissue)))
+  
+}
+
+```
+
+
+
+## Dataset visualisation {.tabset}
+
+### Generic overview of dataset
+```{r dataset_overview}
+
+if(long.compute){
+ 
+  colnames(nk.seurat@meta.data)
+  
+  meta.data.vars <- c("tissue", "Majortype", "celltype")
+  
+  for(i in seq_along(meta.data.vars)){
+    print(
+      UMAPPlot(nk.seurat, 
+               group.by = meta.data.vars[i],
+               pt.size = 1)
+)
+    dev.copy(pdf, paste0(output.dir, "UMAP_", meta.data.vars[i], ".pdf"))
+    dev.off()
+    
+  }
+  
+}
+
+
+```
+
+
+
+### visualise genes of interest
+```{r vis_genes_of_interest}
+
+
+goi <- c("DGAT1", "DGAT2", "TMX1", "TMEM68")
+
+
+
+# plot feature plots, Density plots, and vlnplots genes of interest
+
+if(long.compute){
+  
+  
+  # Gene expression on UMAP
+  
+  for(i in seq_along(goi)){
+    
+    # feature plot
+    print(
+      FeaturePlot_scCustom(nk.seurat, 
+                           goi[i], 
+                           pt.size = 0.5)
+      
+    )
+    
+    dev.copy(pdf, paste0(output.dir, "FeaturePlot_", goi[i], ".pdf"))
+    dev.off()
+    
+    
+    # density plot
+    print(
+      Plot_Density_Custom(nk.seurat, 
+                          goi[i], 
+                          custom_palette = batlow.pal)
+    )
+    dev.copy(pdf, paste0(output.dir, "Densityplot_", goi[i], ".pdf"))
+    dev.off()
+    
+    
+    
+    
+    # Plot signature across categories
+    meta.data.vars <- c("meta_histology", "tissue", "Majortype", "celltype")
+    
+    for(j in seq_along(meta.data.vars)){
+      print(
+        VlnPlot_scCustom(nk.seurat,
+                         goi[i], 
+                         group.by = meta.data.vars[j],
+                         pt.size = 0.1) + NoLegend()
+      )
+      dev.copy(pdf, paste0(output.dir, "VlnPlot_", goi[i], "_", meta.data.vars[j], ".pdf"))
+      dev.off()
+      
+    }
+  }
+}
+
+
+
+
+
+
+# write plotting function 
+
+create_barplot <- function(contingency_table, plot_title, return_data = FALSE) {
+  # Calculate percentages
+  percentage_table <- sweep(contingency_table, 2, colSums(contingency_table), FUN = "/") * 100
+  
+  # Convert the result to a data frame
+  percentage_df <- as.data.frame(percentage_table)
+  
+  # Filter rows where 'Var1' is TRUE
+  filtered_df <- percentage_df %>%
+    filter(Var1 == TRUE)
+  
+  # Calculate the average frequency
+  average_freq <- mean(filtered_df$Freq)
+  
+  # Load the ggplot2 library
+  library(ggplot2)
+  
+  # Create the barplot with ordered data
+  plot <- ggplot(filtered_df, aes(x = reorder(Var2, -Freq), y = Freq)) +
+    geom_col(fill = "#112446") +
+    geom_hline(yintercept = average_freq, linetype = "dotted", color = "red") +  # Add a red dotted line
+    labs(x = "Category", 
+         y = "Frequency of each category", 
+         title = plot_title) +  # Use the input plot_title
+    coord_flip() +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5))
+  
+  if (return_data) {
+    return(filtered_df)
+  } else {
+    print(plot)
+    return(NULL)
+  }
+}
+
+
+
+
+# extract statistics and create barplots of score positive cell frequencies 
+
+if(long.compute){
+  
+  for(i in seq_along(goi)){
+    
+    
+    
+    goi.expression <- nk.seurat@assays$RNA@data[goi[i], ]
+    goi.logic <- goi.expression >= 0.5
+    
+    nk.seurat@meta.data$goistatus <- goi.logic
+    
+    
+
+  meta.data.vars <- c("meta_histology", "tissue", "Majortype", "celltype")
+  for(j in seq_along(meta.data.vars)){
+    
+    
+    # Create a contingency table of 'sigstatus' and 'celltype'
+    contingency_table <- table(nk.seurat@meta.data$goistatus, 
+                               nk.seurat@meta.data[[meta.data.vars[j]]])
+    
+    print(
+    create_barplot(contingency_table, meta.data.vars[j])
+    )
+    
+    dev.copy(pdf, paste0(output.dir, "Barplot_freq_of_cells_positive_for_", goi[i], "_across_", meta.data.vars[j], ".pdf"))
+    dev.off()
+    
+    
+     # export data
+    output.dataframe <- create_barplot(contingency_table, meta.data.vars[j], return_data = TRUE)
+    
+    write.csv(output.dataframe, paste0(output.dir, "Freq_of_cells_positive_for_", goi[i], "_across_", meta.data.vars[j], ".csv"))
+  
+    
+  }
+  
+  
+  }
+}
+
+
+```
+

@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the original studies and this repository."
+title: "Tumour-infiltrating immune cell scRNA-seq reanalyses"
+type: software
+authors:
+  - family-names: Corvino
+    given-names: Dillon
+    orcid: "https://orcid.org/0000-0003-0683-1369"
+repository-code: "https://github.com/Eomesodermin/tumour-immune-scrnaseq-reanalyses"
+license: MIT
+date-released: "2026-11-03"
+abstract: "Reanalyses of six public tumour immune-cell atlases and cohorts (pan-cancer NK atlases, a pan-cancer immune atlas, glioma, head and neck cancer and melanoma), used to ask where NK/T-cell genes and signatures of interest (NKG7, TLR2, CD160, CD226/DNAM-1, DGAT) are expressed in tumours."
