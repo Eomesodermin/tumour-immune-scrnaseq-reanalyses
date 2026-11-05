@@ -1,6 +1,6 @@
 # Tumour-infiltrating immune cell scRNA-seq reanalyses
 
-Reanalyses of six public tumour immune-cell atlases and cohorts (pan-cancer NK atlases, a pan-cancer immune atlas, glioma, head and neck cancer and melanoma), used to ask where NK/T-cell genes and signatures of interest (NKG7, TLR2, CD160, CD226/DNAM-1, DGAT) are expressed in tumours.
+Reanalyses of six public tumour immune-cell atlases and cohorts (a pan-cancer NK atlas, a harmonised pan-cancer TIL collection, a pan-cancer immune atlas, glioma, head and neck cancer and melanoma), used to ask where NK/T-cell genes and signatures of interest (NKG7, TLR2, CD160, CD226/DNAM-1, DGAT) are expressed in tumours.
 
 [![parse-check](https://github.com/Eomesodermin/tumour-immune-scrnaseq-reanalyses/actions/workflows/parse-check.yaml/badge.svg)](https://github.com/Eomesodermin/tumour-immune-scrnaseq-reanalyses/actions/workflows/parse-check.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -10,7 +10,7 @@ Reanalyses of six public tumour immune-cell atlases and cohorts (pan-cancer NK a
 | Folder | Study | Species | Assay | Data |
 |---|---|---|---|---|
 | [`tang_2023`](datasets/tang_2023) | Tang et al. (2023) [DOI](https://doi.org/10.1016/j.cell.2023.07.034) | Human | Integrated scRNA-seq atlas (160,011 NK cells, 716 patients, 24 cancer types) | [GEO GSE212890](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE212890); processed atlas at [Zenodo 8275845](https://zenodo.org/records/8275845) |
-| [`borcherding_2024`](datasets/borcherding_2024) | Borcherding et al. (2024) [DOI](https://doi.org/10.1038/s41590-024-01884-z) | Human | Integrated scRNA-seq reference with reference mapping | [GEO GSE245690](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE245690) |
+| [`borcherding_utility`](datasets/borcherding_utility) | Borcherding (uTILity collection) [DOI](https://doi.org/10.5281/zenodo.17977149) | Human | Harmonised collection of public scRNA-seq with paired scTCR-seq (28 studies, 13 tissues, >2.6 M cells) | [Zenodo 17977149](https://zenodo.org/records/17977149); processing code at [ncborcherding/utility](https://github.com/ncborcherding/utility) |
 | [`nieto_2021`](datasets/nieto_2021) | Nieto et al. (2021) [DOI](https://doi.org/10.1101/gr.273300.120) | Human | Integrated 10x Genomics atlas (>500,000 cells, 13 cancer types) | [Zenodo 4263972 (Seurat and AnnData objects; the full `TICAtlas.rds` is ~24 GB)](https://zenodo.org/records/4263972) |
 | [`abdelfattah_2022`](datasets/abdelfattah_2022) | Abdelfattah et al. (2022) [DOI](https://doi.org/10.1038/s41467-022-28372-y) | Human | 10x Genomics scRNA-seq (~200k cells) | [GEO GSE182109](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE182109) |
 | [`cillo_2020`](datasets/cillo_2020) | Cillo et al. (2020) [DOI](https://doi.org/10.1016/j.immuni.2019.11.014) | Human | 10x Genomics scRNA-seq | [GEO GSE139324](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE139324) |

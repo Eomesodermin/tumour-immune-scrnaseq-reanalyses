@@ -1,18 +1,18 @@
-# Borcherding et al. (2024)
+# Borcherding (uTILity)
 
-> Borcherding N, Vishwakarma A, Voigt AP, et al. Pan-cancer profiling of tumor-infiltrating natural killer cells through transcriptional reference mapping. *Nat Immunol* 2024.
-> DOI: [10.1038/s41590-024-01884-z](https://doi.org/10.1038/s41590-024-01884-z)
+> Borcherding N. uTILity: collection of tumor-infiltrating lymphocyte single-cell experiments with TCR sequencing (28 public studies, 13 tissues, >2.6 million cells). Zenodo 2026.
+> DOI: [10.5281/zenodo.17977149](https://doi.org/10.5281/zenodo.17977149)
 
 | | |
 |---|---|
 | **Species** | Human |
-| **Assay** | Integrated scRNA-seq reference with reference mapping |
-| **Biological system** | Pan-cancer tumour-infiltrating NK cells |
-| **Data** | [GEO GSE245690](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE245690) |
+| **Assay** | Harmonised collection of public scRNA-seq with paired scTCR-seq (28 studies, 13 tissues, >2.6 M cells) |
+| **Biological system** | Tumour-infiltrating T cells (and NK cells) across cancers |
+| **Data** | [Zenodo 17977149](https://zenodo.org/records/17977149); processing code at [ncborcherding/utility](https://github.com/ncborcherding/utility) |
 
 ## What this analysis does
 
-Processes the pan-cancer NK reference and examines NKG7 and TLR2 expression, including in renal cell carcinoma.
+Processes the uTILity collection (harmonised public tumour-infiltrating lymphocyte data) and examines NKG7 and TLR2 expression, including in renal cell carcinoma.
 
 ## Scripts
 
