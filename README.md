@@ -3,6 +3,7 @@
 Reanalyses of six public tumour immune-cell atlases and cohorts (a pan-cancer NK atlas, a harmonised pan-cancer TIL collection, a pan-cancer immune atlas, glioma, head and neck cancer and melanoma), used to ask where NK/T-cell genes and signatures of interest (NKG7, TLR2, CD160, CD226/DNAM-1, DGAT) are expressed in tumours.
 
 [![parse-check](https://github.com/Eomesodermin/tumour-immune-scrnaseq-reanalyses/actions/workflows/parse-check.yaml/badge.svg)](https://github.com/Eomesodermin/tumour-immune-scrnaseq-reanalyses/actions/workflows/parse-check.yaml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23975525.svg)](https://doi.org/10.5281/zenodo.23975525)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Datasets
