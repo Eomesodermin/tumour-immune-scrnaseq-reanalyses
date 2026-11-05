@@ -14,6 +14,12 @@
 
 Exploratory analysis of the immune populations in the glioma atlas.
 
+## Key finding
+
+CXCL12 is expressed by a subset of glioma cells that overlaps the hypoxic (CA9 and HIF1A-high) state; this analysis underlies the CXCL12-positive-cell panels in Giordano et al., Nat Commun 2024.
+
+*Summarised from the analysis code and plots; see the scripts for the underlying evidence.*
+
 ## Scripts
 
 Run in numeric order from this folder. Each script sets the working directory with `here::here()`, which resolves to this folder via the `.here` marker.

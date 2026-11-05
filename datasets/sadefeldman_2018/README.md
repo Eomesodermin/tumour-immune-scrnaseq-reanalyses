@@ -14,6 +14,12 @@
 
 QC, normalisation, clustering and T-cell state annotation of the melanoma TIL dataset.
 
+## Key finding
+
+No scientific finding: this analysis reproduces the published T-cell states (including exhausted and cytotoxic CD8 clusters) as a reusable annotated object, with a CD8-only subset.
+
+*Summarised from the analysis code and plots; see the scripts for the underlying evidence.*
+
 ## Scripts
 
 Run in numeric order from this folder. Each script sets the working directory with `here::here()`, which resolves to this folder via the `.here` marker.

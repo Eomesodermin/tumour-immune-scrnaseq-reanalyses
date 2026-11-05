@@ -14,6 +14,12 @@
 
 QC, normalisation, clustering and annotation of the CD45+ immune cells into a Seurat object.
 
+## Key finding
+
+No scientific finding: this analysis produces a clean annotated object of tumour and healthy-donor immune cells, plus a CD8 T-cell subset, for use as a query or reference elsewhere.
+
+*Summarised from the analysis code and plots; see the scripts for the underlying evidence.*
+
 ## Scripts
 
 Run in numeric order from this folder. Each script sets the working directory with `here::here()`, which resolves to this folder via the `.here` marker.

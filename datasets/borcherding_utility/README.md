@@ -14,6 +14,12 @@
 
 Processes the uTILity collection (harmonised public tumour-infiltrating lymphocyte data) and examines NKG7 and TLR2 expression, including in renal cell carcinoma.
 
+## Key finding
+
+NKG7 is expressed in CD8 T and NK cells and tracks tightly with the cytotoxic programme (PRF1, GZMA/B/H, GNLY, CTSW) across tumour types; TLR2 is mainly myeloid, with low expression in T and NK cells.
+
+*Summarised from the analysis code and plots; see the scripts for the underlying evidence.*
+
 ## Scripts
 
 Run in numeric order from this folder. Each script sets the working directory with `here::here()`, which resolves to this folder via the `.here` marker.

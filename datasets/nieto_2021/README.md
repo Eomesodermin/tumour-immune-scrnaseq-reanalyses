@@ -14,6 +14,12 @@
 
 Preprocesses the Tumour Immune Cell Atlas and scores a CD226 (DNAM-1) axis signature across immune cell types.
 
+## Key finding
+
+CD226 (DNAM-1) is expressed by a subset of CD4 T cells enriched in cytotoxic and Th1-like clusters, and the fraction differs by tumour subtype.
+
+*Summarised from the analysis code and plots; see the scripts for the underlying evidence.*
+
 ## Scripts
 
 Run in numeric order from this folder. Each script sets the working directory with `here::here()`, which resolves to this folder via the `.here` marker.

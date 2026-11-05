@@ -14,6 +14,12 @@
 
 Scores a CD160-positive NK signature and DGAT expression across cancer types, tissues and NK subsets.
 
+## Key finding
+
+The CD160-positive signature marks a tissue- and tumour-resident NK state and is low in blood NK cells; DGAT1 and DGAT2 are expressed in a restricted subset of NK states and vary by cancer type.
+
+*Summarised from the analysis code and plots; see the scripts for the underlying evidence.*
+
 ## Scripts
 
 Run in numeric order from this folder. Each script sets the working directory with `here::here()`, which resolves to this folder via the `.here` marker.
