@@ -1,0 +1,944 @@
+---
+title: "Xie_etal_2021_JCI_GBM_endothelial_cells"
+author: "Dillon Corvino"
+date: "18/08/2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+Built with R version `r getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+```{r Dataset_Info}
+
+# Title: Key molecular alterations in endothelial cells in human glioblastoma uncovered through single-cell RNA sequencing
+# Authors: Xie Y, He L, Lugano R, Zhang Y et al.,
+# Species: Human
+# organ:Glioblastoma
+# cell type: Various - CD31 Positive cells
+# Sample info:
+
+# GEO accession number: GSE162631
+
+# Input data is raw counts matrix as stated in Gene omnibus page
+
+```
+
+
+### Environment
+```{r setup}
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
+setwd(here::here())   # project root; works in RStudio, knitr and Rscript
+
+# Load packages
+source("scripts/Load_packages.R", local = knitr::knit_global())
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+long.compute <- FALSE
+quick.load <- TRUE
+
+if(quick.load){
+  #endothelial.seurat <- readRDS("Exported_RDS_files/endothelial_seurat.rds")
+  integrated.seurat<- readRDS("Exported_RDS_files/Integrated_seurat_with_imputation.rds")
+  
+}
+
+```
+
+### Dataset overview
+```{r Endothelial_cell_overview}
+
+# Create output dir
+output.path <- paste0("output/figures/Endothelial_cells_overview")
+
+if(!dir.exists(output.path)){
+  dir.create(output.path, 
+             recursive = TRUE)}
+
+
+DefaultAssay(endothelial.seurat) <- "integrated"
+
+
+
+# Number of cells by disease classification
+barplot(table(endothelial.seurat@meta.data$disease),
+        ylab = "# of cells") 
+
+dev.copy(pdf, paste0(output.path, "/Endothelial_cell_number_disease.pdf"))
+dev.off()
+
+# Number of cells by EC subcluster classification
+barplot(table(endothelial.seurat@meta.data$EC_subcluster), 
+        ylab = "# of cells")
+
+dev.copy(pdf, paste0(output.path, "/Endothelial_cell_EC_subtype.pdf"))
+dev.off()
+
+# Number of cells by Sample ID classification
+barplot(table(endothelial.seurat@meta.data$SampleID),
+        ylab = "# of cells",
+        las = 2)
+
+dev.copy(pdf, paste0(output.path, "/Endothelial_cell_sampleID.pdf"))
+dev.off()
+
+
+
+
+# UMAP plots
+vars.plot <- c("SampleID", "EC_subcluster", "disease")
+
+for(i in seq_along(vars.plot)){
+  
+  print(
+    UMAPPlot(endothelial.seurat, 
+             group.by = vars.plot[i])
+  )
+  
+  
+  dev.copy(pdf, paste0(output.path, "/UMAP_Endothelial_cells_", vars.plot[i], ".pdf"))
+  dev.off()
+}
+
+
+# Feature plots
+
+vars.plot <- c("CLDN5", "CXCL12")
+
+for(i in seq_along(vars.plot)){
+  
+  print(
+    FeaturePlot(endothelial.seurat, 
+                vars.plot[i], 
+                cols = c("gray", "orange", "red"),
+                order = TRUE)
+  )
+  
+  
+  dev.copy(pdf, paste0(output.path, "/UMAP_Endothelial_cells_", vars.plot[i], ".pdf"))
+  dev.off()
+}
+
+
+
+
+
+
+DefaultAssay(integrated.seurat) <- "integrated"
+
+ 
+ 
+# Create output dir
+output.path <- paste0("output/figures/Total_dataset")
+
+if(!dir.exists(output.path)){
+  dir.create(output.path, 
+             recursive = TRUE)}
+ 
+ 
+ 
+DefaultAssay(integrated.seurat) <- "alra"
+
+
+VlnPlot(integrated.seurat, 
+        "CXCL12", 
+        log = T,
+        group.by = "cell_type",
+        split.by = "disease", 
+        pt.size = 0)
+
+dev.copy(pdf, paste0(output.path, "/VlnPlot_CXCL12_imputed.pdf"))
+dev.off()
+
+FeaturePlot(integrated.seurat, 
+            "CXCL12", 
+            order = TRUE, 
+            split.by = "disease",
+            pt.size = 0.1)
+
+dev.copy(pdf, paste0(output.path, "/FeaturePlot_CXCL12_imputed.pdf"))
+dev.off()
+
+
+
+```
+
+
+
+### CXCL12 co-expression CD31
+```{r CXCL12_expression}
+
+
+# Create output dir
+output.path <- paste0("output/figures/CXCL12_expression/")
+
+if(!dir.exists(output.path)){
+  dir.create(output.path, 
+             recursive = TRUE)}
+
+
+
+
+#install.packages('scico')
+library("scico")
+
+#scico_palette_show()
+batlow.pal <- scico(100, palette = 'batlow')
+
+
+# set up object
+
+
+DefaultAssay(integrated.seurat) <- "integrated"
+
+Idents(integrated.seurat) <- integrated.seurat@meta.data$cell_type
+
+# downsample for easier plotting and formatting in illustrator 
+small.seurat <- subset(integrated.seurat, downsample = 5000)
+
+
+unique(integrated.seurat@meta.data$cell_type)
+
+integrated.seurat <- Seurat::RenameIdents(integrated.seurat, 
+                      'Microglia' = 'Microglia & Macrophage',
+                      'Microglia + macrophage' = 'Microglia & Macrophage', 
+                      'Macrophage' = 'Microglia & Macrophage', 
+                      'Microglia in patient 4' = 'Microglia & Macrophage')
+
+
+integrated.seurat@meta.data$cell_type_renamed <- Idents(integrated.seurat)
+
+idents.vec <- unique(integrated.seurat@meta.data$cell_type_renamed)
+
+
+for(i in seq_along(idents.vec)){
+  
+  print(
+    scCustomize::Cluster_Highlight_Plot(integrated.seurat, idents.vec[i])
+  )
+  
+  dev.copy(pdf, paste0(output.path, "UMAP_highlighted_",idents.vec[i], ".pdf"))
+  dev.off()
+  
+}
+
+
+length(idents.vec)
+
+clust.cols <- c("#666666", # microglia
+                "#A6761D", # endo
+                "#8DA0CB", # peri
+                "#7570B3", # neutrophils
+                "#A6D854", # dendritic cells
+                "#984EA3", # t cell
+                "#1B9E77", # prolif
+                "#D95F02", # glial and neuronal
+                "#E41A1C") # b cells
+
+
+
+# plot cluster ids
+
+UMAPPlot(integrated.seurat,
+         pt.size = 1, 
+         cols = clust.cols,
+         label = T) +
+  NoLegend()
+
+
+dev.copy(pdf, paste0(output.path, "UMAP_no_legend.pdf"))
+dev.off()
+
+
+
+UMAPPlot(integrated.seurat,
+         pt.size = 1, 
+         cols = clust.cols,
+         label = T)
+
+dev.copy(pdf, paste0(output.path, "UMAP.pdf"))
+dev.off()
+
+
+
+
+
+
+
+DefaultAssay(integrated.seurat) <- "alra"
+
+Plot_Density_Custom(integrated.seurat, 
+                    features = "PECAM1",
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+dev.copy(pdf, paste0(output.path, "Nebulosa_alra_pcam1.pdf"))
+dev.off()
+
+
+
+# split object
+Idents(integrated.seurat) <- integrated.seurat@meta.data$disease
+
+integrated.seurat <- Seurat::SplitObject(integrated.seurat, split.by = "disease")
+
+
+
+
+DefaultAssay(integrated.seurat$Normal) <- "integrated"
+DefaultAssay(integrated.seurat$Tumour) <- "integrated"
+
+Idents(integrated.seurat$Normal) <- integrated.seurat$Normal@meta.data$cell_type
+Idents(integrated.seurat$Tumour) <- integrated.seurat$Tumour@meta.data$cell_type
+
+
+
+# plot cluster ids
+
+UMAPPlot(integrated.seurat$Normal,
+         pt.size = 1, 
+         label = T) +
+  NoLegend()
+
+
+dev.copy(pdf, paste0(output.path, "UMAP_normal_no_legend.pdf"))
+dev.off()
+
+
+UMAPPlot(integrated.seurat$Tumour,
+         pt.size = 1, 
+         label = T) +
+  NoLegend()
+
+
+dev.copy(pdf, paste0(output.path, "UMAP_tumor_no_legend.pdf"))
+dev.off()
+
+
+
+
+
+
+
+for(i in 1:2){
+  
+  
+  Idents(integrated.seurat[[i]]) <- integrated.seurat[[i]]@meta.data$cell_type
+
+  DefaultAssay(integrated.seurat[[i]]) <- "integrated"
+  
+  print(
+  FeaturePlot(integrated.seurat[[i]], 
+              "CXCL12", 
+              pt.size = 1, 
+              order = T)
+  )
+  
+  dev.copy(pdf, paste0(output.path, "featureplot_cxcl12_", names(integrated.seurat)[i], "_integrated.pdf"))
+  dev.off()
+  
+  
+  
+    print(
+      Plot_Density_Custom(integrated.seurat[[i]], 
+                            features = "CXCL12",
+                            custom_palette = batlow.pal,
+                            joint = FALSE, 
+                            pt.size = 1, 
+                            reduction = "umap")
+      )
+    dev.copy(pdf, paste0(output.path, "Nebulosa_cxcl12_", names(integrated.seurat)[i], "_integrated.pdf"))
+  dev.off()
+  
+  
+  
+  
+  DefaultAssay(integrated.seurat[[i]]) <- "alra"
+  
+  print(
+  FeaturePlot(integrated.seurat[[i]], 
+              "CXCL12", 
+              pt.size = 1, 
+              order = T)
+  )
+  
+  dev.copy(pdf, paste0(output.path, "featureplot_cxcl12_", names(integrated.seurat)[i], "_alra.pdf"))
+  dev.off()
+  
+  
+    
+    print(
+      Plot_Density_Custom(integrated.seurat[[i]], 
+                            features = "CXCL12",
+                            custom_palette = batlow.pal,
+                            joint = FALSE, 
+                            pt.size = 1, 
+                            reduction = "umap")
+      )
+    dev.copy(pdf, paste0(output.path, "Nebulosa_cxcl12_", names(integrated.seurat)[i], "_alara.pdf"))
+  dev.off()
+  
+  
+  
+}
+
+
+
+
+
+
+Idents(integrated.seurat) <- integrated.seurat@meta.data$cell_type
+DefaultAssay(integrated.seurat[[1]]) <- "alra"
+
+
+VlnPlot(integrated.seurat[[1]], 
+        "CXCL12",
+        pt.size = 0) + 
+ggplot2::ylim(c(0, 50)) #+ NoLegend()
+
+
+
+
+
+
+names(integrated.seurat)
+
+
+
+
+goi <- c( "MKI67", "VEGFA", "CXCL12", "CXCR4", "PECAM1")
+
+
+for(i in 1:length(goi)){
+  
+  print(Plot_Density_Custom(integrated.seurat, 
+                            features = goi[i],
+                            custom_palette = batlow.pal,
+                            joint = FALSE, 
+                            pt.size = 1, 
+                            reduction = "umap"))
+  
+  dev.copy(pdf, paste0(output.path, "Nebulosa_RNA_", goi[i], ".pdf"))
+  dev.off()
+  
+  
+  
+  
+  
+  
+  
+  
+    
+}
+
+
+# PECAM1, CLDN5, VWF, CAVIN2, CD34
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+### Correlation analysis - just endothelial cells
+```{r correlation_analysis_Endothelial}
+
+
+
+DefaultAssay(endothelial.seurat) <- "integrated"
+
+
+
+# Code adapted from Prof. Hoelzel 
+
+# Create output directorys
+if(!dir.exists("output/figures/Correlation_analysis")){
+  dir.create("output/figures/Correlation_analysis", 
+             recursive = T)
+}
+
+if(!dir.exists("output/tables/Correlation_analysis")){
+  dir.create("output/tables/Correlation_analysis", 
+             recursive = T)
+}
+
+################
+# Functions
+################
+
+probeCor <- function(x, gp, method="pearson") {
+  
+  em <- x
+  prbcor<-apply(em, 1, cor, em[gp,], method=method)
+  return(prbcor)
+  
+}
+
+probeCor.test <- function(x, gp, method="pearson") {
+  
+  em <- x
+  prbcort <- apply(em, 1, cor.test, em[gp,], method=method)
+  return(prbcort)
+} 
+
+
+# Get data
+normed.data <- as.matrix(endothelial.seurat@assays$integrated@data)
+
+# Identify lowest 30% expressed genes in dataset 
+q.val <- quantile(rowMeans(normed.data), probs = 0.3)
+low.exprs <- rowMeans(normed.data) < q.val
+
+# Filter low expressed genes
+filt.data <- normed.data[!low.exprs, ]
+
+# Calculate pearson correlation for all genes vs. CXCL12
+cor.res <- probeCor(filt.data, 
+                    gp = "CXCL12", 
+                    method = "pearson")
+
+# Sort correlation values
+cor.res <- as.data.frame(sort(cor.res, 
+                                 decreasing = TRUE))
+
+colnames(cor.res) <- "Cor.val"
+
+
+# Calculate statistics 
+cor.res.pval <- probeCor.test(filt.data, 
+                              gp = "CXCL12", 
+                              method = "pearson")
+
+cor.res.pval <- unlist(sapply(cor.res.pval, "[", "p.value"))
+
+names(cor.res.pval) <- gsub(".p.value", "", names(cor.res.pval))
+
+cor.res.pval <- as.data.frame(sort(cor.res.pval,
+                                   decreasing = FALSE))
+
+colnames(cor.res.pval) <- "P.val"
+
+
+head(cor.res.pval)
+tail(cor.res.pval)
+
+
+# Combine both pval and correlation statistic 
+cor.df <- merge(cor.res, cor.res.pval, by = "row.names")
+
+colnames(cor.df)[1] <- c("GeneID")
+
+# Calculate FDR adjusted P value
+cor.df$FDR <- p.adjust(cor.df$P.val, method = "fdr")
+
+
+# Write data to file 
+write.csv(cor.df, "output/tables/Correlation_analysis/Correlation_Endothelial_cells.csv")
+
+
+
+################################
+# Heatmap of top correlations
+################################
+
+Idents(endothelial.seurat) <- endothelial.seurat@meta.data$EC_subcluster
+DefaultAssay(endothelial.seurat) <- "integrated"
+
+small.seurat <- subset(endothelial.seurat, 
+                       downsample = 300)
+
+
+up.genes <- cor.df %>%
+  dplyr::filter(FDR < 0.05) %>%
+  dplyr::top_n(20, Cor.val) %>% 
+  dplyr::pull(GeneID)
+
+up.genes <- unique(c("CXCL12", up.genes))
+
+Idents(small.seurat) <- small.seurat@meta.data$EC_subcluster
+
+DoHeatmap(small.seurat, 
+          features = up.genes, 
+          angle = 90,
+          size = 3,
+          raster = FALSE)
+
+dev.copy(pdf, "output/figures/Correlation_analysis/Heatmap_Endothelial_cells_top20_corr_genes.pdf")
+dev.off()
+
+
+
+# Sort by CXCL12 expression 
+temp.df <- small.seurat@assays$integrated@data
+cell.use <- colnames(small.seurat@assays$integrated@data)[order(temp.df["CXCL12", ])]
+
+# Set idents
+Idents(small.seurat) <- small.seurat@meta.data$cell_type
+
+# Positively correlated genes
+DoHeatmap(small.seurat, 
+          cells = cell.use,
+          features = up.genes, 
+          raster = FALSE)
+
+dev.copy(pdf, "output/figures/Correlation_analysis/Heatmap_Endothelial_cells_top_positively_correlated.pdf")
+dev.off()
+
+
+dn.genes <- cor.df %>%
+  dplyr::filter(FDR < 0.05) %>%
+  dplyr::top_n(-20, Cor.val) %>% 
+  dplyr::pull(GeneID)
+
+dn.genes <- unique(c("CXCL12", dn.genes))
+
+# Neg correlated genes
+DoHeatmap(small.seurat, 
+          cells = cell.use,
+          features = dn.genes, 
+          raster = FALSE)
+
+dev.copy(pdf, "output/figures/Correlation_analysis/Heatmap_Endothelial_cells_top_Neg_correlated.pdf")
+dev.off()
+
+```
+ 
+
+### Correlation analysis - All cells
+```{r correlation_analysis_All_Cells}
+
+DefaultAssay(integrated.seurat) <- "integrated"
+integrated.seurat # 56,138 genes and 97,584 cells 
+
+
+# dataset is very large, downsample for correlation analysis 
+
+length(unique(integrated.seurat@meta.data$cell_type)) # 12 cell type annotations
+
+Idents(integrated.seurat) <- integrated.seurat@meta.data$cell_type
+
+downsampled.seurat <- subset(integrated.seurat, 
+                             downsample = 3000)
+
+rm(integrated.seurat)
+
+# export seurat object that was used for correlation calculation 
+saveRDS(downsampled.seurat, "Exported_RDS_files/Downsampled_Dataset.rds")
+
+
+
+# Code adapted from Prof. Hoelzel 
+
+# Create output directorys
+if(!dir.exists("output/figures/Correlation_analysis_all_cells")){
+  dir.create("output/figures/Correlation_analysis_all_cells", 
+             recursive = T)
+}
+
+if(!dir.exists("output/tables/Correlation_analysis_all_cells")){
+  dir.create("output/tables/Correlation_analysis_all_cells", 
+             recursive = T)
+}
+
+################
+# Functions
+################
+
+probeCor <- function(x, gp, method="pearson") {
+  
+  em <- x
+  prbcor<-apply(em, 1, cor, em[gp,], method=method)
+  return(prbcor)
+  
+}
+
+probeCor.test <- function(x, gp, method="pearson") {
+  
+  em <- x
+  prbcort <- apply(em, 1, cor.test, em[gp,], method=method)
+  return(prbcort)
+} 
+
+
+# Get data
+normed.data <- as.matrix(downsampled.seurat@assays$integrated@data)
+
+# Identify lowest 30% expressed genes in dataset 
+q.val <- quantile(rowMeans(normed.data), probs = 0.3)
+low.exprs <- rowMeans(normed.data) < q.val
+
+# Filter low expressed genes
+filt.data <- normed.data[!low.exprs, ]
+
+# Calculate pearson correlation for all genes vs. CXCL12
+cor.res <- probeCor(filt.data, 
+                    gp = "CXCL12", 
+                    method = "pearson")
+
+# Sort correlation values
+cor.res <- as.data.frame(sort(cor.res, 
+                                 decreasing = TRUE))
+
+colnames(cor.res) <- "Cor.val"
+
+
+# Calculate statistics 
+cor.res.pval <- probeCor.test(filt.data, 
+                              gp = "CXCL12", 
+                              method = "pearson")
+
+cor.res.pval <- unlist(sapply(cor.res.pval, "[", "p.value"))
+
+names(cor.res.pval) <- gsub(".p.value", "", names(cor.res.pval))
+
+cor.res.pval <- as.data.frame(sort(cor.res.pval,
+                                   decreasing = FALSE))
+
+colnames(cor.res.pval) <- "P.val"
+
+
+head(cor.res.pval)
+tail(cor.res.pval)
+
+
+# Combine both pval and correlation statistic 
+cor.df <- merge(cor.res, cor.res.pval, by = "row.names")
+
+colnames(cor.df)[1] <- c("GeneID")
+
+# Calculate FDR adjusted P value
+cor.df$FDR <- p.adjust(cor.df$P.val, method = "fdr")
+
+
+# Write data to file 
+write.csv(cor.df, "output/tables/Correlation_analysis_all_cells/Correlation_all_cells.csv")
+
+
+
+################################
+# Heatmap of top correlations
+################################
+
+DefaultAssay(downsampled.seurat) <- "integrated"
+Idents(downsampled.seurat) <- downsampled.seurat@meta.data$cell_type
+
+small.seurat <- subset(downsampled.seurat, 
+                       downsample = 300)
+
+
+up.genes <- cor.df %>%
+  dplyr::filter(FDR < 0.05) %>%
+  dplyr::top_n(20, Cor.val) %>% 
+  dplyr::pull(GeneID)
+
+up.genes <- unique(c("CXCL12", up.genes))
+
+Idents(small.seurat) <- small.seurat@meta.data$cell_type
+
+DoHeatmap(small.seurat, 
+          features = up.genes, 
+          angle = 90,
+          size = 3,
+          raster = FALSE)
+
+dev.copy(pdf, "output/figures/Correlation_analysis_all_cells/Heatmap_All_cells_top20_corr_genes.pdf")
+dev.off()
+
+
+
+# Sort by CXCL12 expression 
+temp.df <- small.seurat@assays$integrated@data
+cell.use <- colnames(small.seurat@assays$integrated@data)[order(temp.df["CXCL12", ])]
+
+# Set idents
+Idents(small.seurat) <- small.seurat@meta.data$cell_type
+
+# Positively correlated genes
+DoHeatmap(small.seurat, 
+          cells = cell.use,
+          features = up.genes, 
+          group.by = "disease",
+          raster = FALSE)
+
+dev.copy(pdf, "output/figures/Correlation_analysis_all_cells/Heatmap_All_cells_top_positively_correlated.pdf")
+dev.off()
+
+
+dn.genes <- cor.df %>%
+  dplyr::filter(FDR < 0.05) %>%
+  dplyr::top_n(-20, Cor.val) %>% 
+  dplyr::pull(GeneID)
+
+dn.genes <- unique(c("CXCL12", dn.genes))
+
+# Neg correlated genes
+DoHeatmap(small.seurat, 
+          cells = cell.use,
+          features = dn.genes, 
+                    group.by = "disease",
+          raster = FALSE)
+
+dev.copy(pdf, "output/figures/Correlation_analysis_all_cells/Heatmap_All_cells_top_Neg_correlated.pdf")
+dev.off()
+
+
+
+
+```
+ 
+
+
+### Dataset visualisation
+```{r Gene_expression}
+
+
+
+# Create output dir
+output.path <- paste0("output/figures/FeaturePlots")
+
+if(!dir.exists(output.path)){
+  dir.create(output.path, 
+             recursive = TRUE)}
+
+
+DefaultAssay(integrated.seurat) <- "integrated"
+Idents(integrated.seurat) <- integrated.seurat@meta.data$cell_type
+
+p1 <- UMAPPlot(integrated.seurat)
+
+
+cxcl12 <- FeaturePlot(integrated.seurat, 
+                  "CXCL12", 
+                  pt.size = 1, 
+                  split.by = "disease",
+                  order = T)
+
+ptprc <- FeaturePlot(integrated.seurat, 
+                  "PTPRC", 
+                  pt.size = 1, 
+                  order = T)
+
+
+
+
+
+
+p2 <- FeaturePlot(integrated.seurat, 
+                  "PECAM1", 
+                  pt.size = 1, 
+                  order = T)
+
+
+
+cldn5 <- FeaturePlot(integrated.seurat, 
+                  "CLDN5", 
+                  pt.size = 1, 
+                  order = T)
+
+vmf <- FeaturePlot(seurat.list$Tumour_2, 
+                  "VWF", 
+                  pt.size = 1, 
+                  order = T)
+
+p6 <- FeaturePlot(seurat.list$Tumour_2, 
+                  "CAVIN2", 
+                  pt.size = 1, 
+                  order = T)
+
+
+
+(p1|cldn5)/cxcl12
+
+
+dev.copy(pdf, "temp.pdf")
+dev.off()
+
+# PECAM1, CLDN5, VWF, CAVIN2, CD34
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+### DEG calculation
+```{r DEG_calculation}
+
+if(long.compute){
+  for(i in seq_along(seurat.list)){
+    DefaultAssay(seurat.list[[i]]) <- "SCT"
+  }
+  
+  #BiocManager::install('limma')
+  #library("limma")
+  
+  
+  markers.vec <- lapply(seurat.list, 
+                        FUN = Seurat::FindAllMarkers,
+                        only.pos = FALSE)
+  
+  
+  # Save dataset with dim reduction
+  saveRDS(markers.vec, "Exported_RDS_files/DEG_markers.rds")
+  
+  
+}
+
+```
+
+
+

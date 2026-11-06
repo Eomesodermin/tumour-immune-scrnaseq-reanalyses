@@ -1,0 +1,950 @@
+---
+title: "Xie_etal_2021_JCI_GBM_endothelial_cells"
+author: "Dillon Corvino"
+date: "18/08/2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+Built with R version `r getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+```{r Dataset_Info}
+
+# Title: Key molecular alterations in endothelial cells in human glioblastoma uncovered through single-cell RNA sequencing
+# Authors: Xie Y, He L, Lugano R, Zhang Y et al.,
+# Species: Human
+# organ:Glioblastoma
+# cell type: Various - CD31 Positive cells
+# Sample info:
+
+# GEO accession number: GSE162631
+
+# Input data is raw counts matrix as stated in Gene omnibus page
+
+```
+
+
+### Environment
+```{r setup}
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+if (!requireNamespace("here", quietly = TRUE)) install.packages("here")
+setwd(here::here())   # project root; works in RStudio, knitr and Rscript
+
+# Load packages
+source("scripts/Load_packages.R", local = knitr::knit_global())
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+long.compute <- TRUE
+quick.load <- FALSE
+
+if(quick.load){
+  #integrated.seurat <- readRDS("Exported_RDS_files/integrated_seurat.rds")
+  endothelial.seurat <- readRDS("Exported_RDS_files/endothelial_seurat.rds")
+}
+
+```
+
+### Read and format dataset
+```{r reading_data}
+
+############################
+# Read in sample data
+############################
+
+if(long.compute){
+  
+  ########################
+  # Read in tumour data
+  ########################
+  
+  # List directories
+  input.dir <- list.dirs("data/Tumour")
+  input.dir <- input.dir[-1]
+  
+  # Create name variable
+  file.names <- gsub("data/Tumour/", "", input.dir)
+  
+  
+  # Read in samples
+  for (i in seq_along(input.dir)){
+    assign(file.names[i], Seurat::Read10X(input.dir[i]))
+  }
+  
+  ########################
+  # Read in healthy data
+  ########################
+  
+  # List directories
+  input.dir <- list.dirs("data/Adjacent_normal")
+  input.dir <- input.dir[-1]
+  
+  # Create name variable
+  file.names <- gsub("data/Adjacent_normal/", "", input.dir)
+  
+  
+  # Read in samples
+  for (i in seq_along(input.dir)){
+    assign(file.names[i], Seurat::Read10X(input.dir[i]))
+  }
+  
+}
+
+```
+
+### Create seurat object
+```{r create_Seurat_object}
+
+
+if(long.compute){
+  load_data <- function(data.input, species.ori = "human", project.name = NULL){
+    
+    s.object <- CreateSeuratObject(counts = data.input,
+                                   min.cells = 3, 
+                                   project = project.name,
+                                   min.genes = 200)
+    
+    if (species.ori == "mouse") {
+      pat <- "^mt-"
+    }else if (species.ori == "human"){
+      pat <- "^MT-"
+    }
+    
+    s.object <- PercentageFeatureSet(s.object,
+                                     pattern = pat,
+                                     col.name = "percent.mt")
+    
+    return(s.object)
+  }
+  
+  for(i in 1:4){
+    
+    # Tumour samples into seurat objects
+    input.data <- eval(parse(text = paste0("R", i, "_T")))
+    
+    seurat.name <- paste0("Tumour.", i, ".seurat")
+    
+    
+    assign(seurat.name, load_data(input.data, 
+                                  species.ori = "human", 
+                                  project.name = paste0("Tumour_", i)))
+    
+    
+    
+    # Normal samples into seurat objects
+    input.data <- eval(parse(text = paste0("R", i, "_N")))
+    
+    seurat.name <- paste0("Normal.", i, ".seurat")
+    
+    assign(seurat.name, load_data(input.data, 
+                                  species.ori = "human", 
+                                  project.name = paste0("Normal_", i)))
+    
+  }
+  
+  
+  
+  
+  # Make a list of seurat objects
+  seurat.list <- c(Normal.1.seurat, 
+                   Normal.2.seurat,
+                   Normal.3.seurat,
+                   Normal.4.seurat,
+                   Tumour.1.seurat,
+                   Tumour.2.seurat,
+                   Tumour.3.seurat,
+                   Tumour.4.seurat)
+  
+  names(seurat.list) <- c("Normal_1", "Normal_2", "Normal_3", "Normal_4",
+                          "Tumour_1", "Tumour_2", "Tumour_3", "Tumour_4")
+  
+  
+  
+  saveRDS(seurat.list, "Exported_RDS_files/Seurat_list.rds")
+  
+  
+  # remove single seurat objects and other large data
+  
+  rm(R1_N, R2_N, R3_N, R4_N, R1_T, R2_T, R3_T, R4_T, input.data,
+     Normal.1.seurat, Normal.2.seurat, Normal.3.seurat, Normal.4.seurat,
+     Tumour.1.seurat, Tumour.2.seurat, Tumour.3.seurat, Tumour.4.seurat)
+  
+}
+```
+
+
+### Format metadata
+```{r format_metadata}
+
+
+if(long.compute){
+
+############################
+# Formatting metadata
+############################
+
+# Cell type info
+all.cells <- read_xlsx("annotations/Fig1_all_cell_annoation_info.xlsx")
+all.cells <- as.data.frame(all.cells)
+
+head(all.cells)
+
+colnames(all.cells) <- c("cells", "cell_type")
+
+all.cells$sampleID <- gsub("_.*", "", all.cells$cells)
+
+unique(all.cells$sampleID)
+
+
+# Formatting of EC subcluster metadata
+EC.subcluster <- read_xlsx("annotations/Fig2_EC_subclustering_annoation_info.xlsx")
+EC.subcluster <- as.data.frame(EC.subcluster)
+
+head(EC.subcluster)
+
+colnames(EC.subcluster) <- c("cells", "EC_subcluster")
+
+EC.subcluster$sampleID <- gsub("_.*", "", EC.subcluster$cells)
+
+unique(EC.subcluster$sampleID)
+
+
+# Loop over seurat list and apply metadata
+
+for(i in seq_along(seurat.list)){
+  
+  # Rename cell ID in seurat objects
+  current.names <- rownames(seurat.list[[i]]@meta.data)
+  
+  new.names <- gsub("-1", "", current.names)
+  
+  if(i <= 4){
+    new.names <- paste0("control", i, "_", new.names)
+  }else if(i > 4){
+    j <- i-4
+    new.names <- paste0("tumour", j, "_", new.names)
+  }
+  
+  seurat.list[[i]] <- Seurat::RenameCells(seurat.list[[i]], 
+                                          new.names = new.names)
+  
+  
+  # filter metadata for seurat object in question
+  if(i <= 4){
+    sample.id <- paste0("control", i)
+  }else if(i > 4){
+    j <- i-4
+    sample.id <- paste0("tumour", j)
+  }
+  
+  ##############################
+  # Add cell type metadata
+  ##############################
+  
+  # Cell Type metadata
+  Celltype.meta <- 
+    all.cells %>%
+    dplyr::filter(sampleID == sample.id)
+  
+  # make metadata into a named vector 
+  celltype.vector <- Celltype.meta$cell_type
+  names(celltype.vector) <- Celltype.meta$cells
+  
+  # add metadata
+  # add meta data
+  seurat.list[[i]] <- AddMetaData(seurat.list[[i]], 
+                                  metadata = celltype.vector, 
+                                  col.name = "cell_type")
+  
+  # rename non-mapped na.values to unknown
+  na.logic <- is.na(seurat.list[[i]]@meta.data$cell_type)
+  seurat.list[[i]]@meta.data$cell_type[na.logic] <- "Unknown"
+  
+  
+  ##############################
+  # Add EC subcluster metadata
+  ##############################
+  
+  # EC subcluster metadata
+  EC.subcluster.meta <- 
+    EC.subcluster %>%
+    dplyr::filter(sampleID == sample.id)
+  
+  # make metadata into a named vector 
+  ECsubcluster.vector <- EC.subcluster.meta$EC_subcluster
+  names(ECsubcluster.vector) <- EC.subcluster.meta$cells
+  
+  # add metadata
+  # add meta data
+  seurat.list[[i]] <- AddMetaData(seurat.list[[i]], 
+                                  metadata = ECsubcluster.vector, 
+                                  col.name = "EC_subcluster")
+  
+  
+  
+  
+  # rename non-mapped na.values to unknown
+  na.logic <- is.na(seurat.list[[i]]@meta.data$EC_subcluster)
+  seurat.list[[i]]@meta.data$EC_subcluster[na.logic] <- "Non_EC"
+  
+  rm(ECsubcluster.vector, celltype.vector)
+  
+}
+
+
+
+# remove other large data 
+rm(all.cells, Celltype.meta, EC.subcluster, EC.subcluster.meta)
+
+
+# Export data
+saveRDS(seurat.list, "Exported_RDS_files/Seurat_list.rds")
+
+
+}
+
+```
+
+
+## QC and Filter {.tabset}
+
+### QC & filter
+
+```{r QC_and_filter}
+
+if(long.compute){
+  
+  for(i in seq_along(seurat.list)){
+    
+    # Create output dir
+    output.path <- paste0("output/QC/QC_", names(seurat.list)[i])
+    
+    
+    if(!dir.exists(output.path)){
+      dir.create(output.path, 
+                 recursive = TRUE)}
+    
+    
+    # Plot QC metrics 
+    
+    # nFeature & nCount & Mito
+    print(
+      VlnPlot(seurat.list[[i]], 
+              features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+              group.by = "cell_type",
+              pt.size = 0.1)
+    )
+    
+    dev.copy(pdf,  paste0(output.path, "/QC_nFeature_nCount_RNA_percentMito.pdf"))
+    dev.off()
+    
+    # Mito
+    print(
+      VlnPlot(seurat.list[[i]], 
+              features = "percent.mt", 
+              group.by = "cell_type",
+              pt.size = 0.1)
+    )
+    
+    dev.copy(pdf,  paste0(output.path, "/QC_RNA_percentMito.pdf"))
+    dev.off()
+    
+  }
+  
+  
+  #min.nFeature <- 400
+  #max.nFeature <- 7500
+  #max.nCount <- 50000
+  #max.Percent.Mt <- 15
+  
+  #seurat.list <- lapply(seurat.list, 
+  #                     FUN = subset,
+  #                    subset = nFeature_RNA > min.nFeature & nFeature_RNA < max.nFeature & nCount_RNA < max.nCount & percent.mt < max.Percent.Mt)
+  
+  
+  
+  ####################################
+  # filter by only keeping cells with annotation as these were in the original published paper 
+  ####################################
+  
+  for(i in seq_along(seurat.list)){
+    
+    Idents(seurat.list[[i]]) <- seurat.list[[i]]@meta.data$cell_type
+    cell.types <- unique(seurat.list[[i]]@meta.data$cell_type)
+    keep.logic <- !grepl("Unknown", cell.types)
+    cell.types.keep <- cell.types[keep.logic]
+    
+    seurat.list[[i]] <- subset(seurat.list[[i]],
+                               idents = cell.types.keep)
+    
+  }
+  
+  
+  
+  
+  for(i in seq_along(seurat.list)){
+    
+    # output.dir
+    output.path <- paste0("output/QC/QC_", names(seurat.list)[i])
+    
+    # After filtering
+    print(
+      VlnPlot(seurat.list[[i]],
+              features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+              group.by = "cell_type",
+              pt.size = 0.1)
+    )
+    
+    dev.copy(pdf,  paste0(output.path, "/QC_nFeature_nCount_RNA_percentMito_Postfiltering.pdf"))
+    dev.off()
+    
+  }
+  
+  
+  # Post-filtering metrics
+  seurat.list
+  
+  
+  # Save filtered dataset
+  saveRDS(seurat.list, "Exported_RDS_files/Seurat_list.rds")
+  
+  
+}
+
+```
+
+
+## SCT normalise data
+
+```{r SCT_normalisation}
+
+if(long.compute){
+  # Normalise and scale with SCTransform 
+  seurat.list <- lapply(X = seurat.list, 
+                        FUN = SCTransform, 
+                        method = "glmGamPoi", 
+                        vars.to.regress = "percent.mt", 
+                        verbose = TRUE) 
+  
+  # save normalised dataset
+  saveRDS(seurat.list, "Exported_RDS_files/Seurat_list.rds")
+}
+
+```
+
+
+## Integrate datasets {.tabset}
+
+### Integrate data
+
+```{r Integrate_data}
+
+if(long.compute){
+  
+  
+  # Integrate datasets
+  
+  # Select features
+  integration.features <- SelectIntegrationFeatures(object.list = seurat.list, 
+                                                    nfeatures = 4000)
+  
+  # Prep dataset
+  integrated.seurat <- PrepSCTIntegration(object.list = seurat.list, 
+                                          anchor.features = integration.features)
+  
+  # perform PCA analysis
+  integrated.seurat <- lapply(X = integrated.seurat, 
+                              FUN = Seurat::RunPCA,
+                              features = integration.features)
+  
+  
+  # Find integration anchors
+  integration.anchors <- FindIntegrationAnchors(object.list = integrated.seurat, 
+                                                anchor.features = integration.features,
+                                                normalization.method = 'SCT',
+                                                reference = c(1, 5), # use 1 normal and 1 tumour sample as reference
+                                                reduction = "rpca", # rpca is more conservative, best for datasets which may not overlap alot
+                                                k.anchor = 20) # increases strength of alignment
+  
+  # Integrate dataset
+  integrated.seurat <- IntegrateData(anchorset = integration.anchors, 
+                                     normalization.method = 'SCT')
+  
+  
+  # Basic overview of data
+  integrated.seurat # 57127 genes and 50710 cells 
+  
+  #seurat.list[[1]] # 19912 cells
+  #seurat.list[[2]] # 12115 cells
+  #seurat.list[[3]] # 12040 cells
+  #seurat.list[[4]] # 13060 cells
+  
+  # clear memory
+    gc()
+    
+    
+    # add some metadat to object
+    integrated.seurat@meta.data$disease <- gsub("_.*", "", integrated.seurat@meta.data$orig.ident)
+    integrated.seurat@meta.data$SampleID <- integrated.seurat@meta.data$orig.ident
+    
+    
+    # Save files 
+    saveRDS(integrated.seurat, file = "Exported_RDS_files/integrated_seurat.rds")
+    
+    saveRDS(integration.anchors, file = "Exported_RDS_files/integration.anchors.rds")
+    saveRDS(integration.features, file = "Exported_RDS_files/integration.features.rds")
+    
+    
+  # Remove unneeded data
+  rm(integration.anchors, integration.features)
+  
+  
+  
+  
+}
+
+```
+
+
+
+## Unbiased Clustering {.tabset}
+
+### Clustering
+```{r PCA_and_cluster_identification}
+
+if(long.compute){
+
+################################
+# PCA and cluster identification
+################################
+
+
+# Set seed for reproducibility
+set.seed(42)
+
+DefaultAssay(integrated.seurat) <- "integrated"
+Idents(integrated.seurat) <- integrated.seurat@meta.data$cell_type
+
+
+# Calculate PCA
+integrated.seurat <- Seurat::RunPCA(integrated.seurat, 
+                                    npcs = 20, 
+                                    verbose = TRUE, 
+                                    rev.pca = TRUE,
+                                    seed.use = 42)
+
+# Find neighbours
+integrated.seurat <- Seurat::FindNeighbors(integrated.seurat, 
+                                           dims = 1:20)
+
+# Find clusters
+integrated.seurat <- Seurat::FindClusters(integrated.seurat, 
+                                          resolution = 0.1)
+
+
+
+# Plot PCA
+# Create output dir
+output.path <- paste0("output/figures/PCA")
+
+if(!dir.exists(output.path)){
+  dir.create(output.path, 
+             recursive = TRUE)}
+
+
+PCAPlot(integrated.seurat, 
+        dims = c(1, 2),
+        pt.size = 2, 
+        group.by = "SampleID")
+
+
+dev.copy(pdf,  paste0(output.path, "/PCA_dim1_vs_2.pdf"))
+dev.off()
+
+
+PCAPlot(integrated.seurat, 
+        dims = c(2, 3),
+        pt.size = 2, 
+        group.by = "SampleID")
+
+
+dev.copy(pdf,  paste0(output.path, "/PCA_dim2_vs_3.pdf"))
+dev.off()
+
+
+
+
+#################################################################
+# Determine statistically significant principal components
+#################################################################
+
+
+# get output.dir
+output.path <- paste0("output/figures/PCA")
+
+ElbowPlot(integrated.seurat,
+          ndims = 20)
+
+
+dev.copy(pdf,  paste0(output.path, "/PC_elbowplot.pdf"))
+dev.off()
+
+}
+
+```
+
+
+### UMAP and tSNE dim Reduction
+```{r Dim_reduction}
+
+if(long.compute){
+# Calculate UMAP
+integrated.seurat <- Seurat::RunUMAP(integrated.seurat, 
+                                     reduction = "pca",
+                                     dims = 1:20,
+                                     umap.method = "uwot", 
+                                     n.neighbors = 45, # 5 to 50 // 45
+                                     min.dist = 0.5, # Sensible values are in the range 0.001 to 0.5 // 0.5
+                                     seed.use = 42)
+
+# Plot UMAP
+# Create output dir
+output.path <- paste0("output/figures/UMAP")
+
+if(!dir.exists(output.path)){
+  dir.create(output.path, 
+             recursive = TRUE)}
+
+
+
+# New clusters
+UMAPPlot(integrated.seurat, 
+         group.by = "seurat_clusters")
+
+
+dev.copy(pdf,  paste0(output.path, "/UMAP_seurat_clusters.pdf"))
+dev.off()
+
+
+# Sample ID
+UMAPPlot(integrated.seurat, 
+         group.by = "SampleID")
+
+
+dev.copy(pdf,  paste0(output.path, "/UMAP_SampleID.pdf"))
+dev.off()
+
+# Cell type
+UMAPPlot(integrated.seurat, 
+         group.by = "cell_type")
+
+
+dev.copy(pdf,  paste0(output.path, "/UMAP_cell_type.pdf"))
+dev.off()
+
+# By disease
+UMAPPlot(integrated.seurat, 
+         split.by = "disease")
+
+
+dev.copy(pdf,  paste0(output.path, "/UMAP_disease.pdf"))
+dev.off()
+
+
+# By EC_subcluster
+UMAPPlot(integrated.seurat, 
+         group.by = "EC_subcluster")
+
+dev.copy(pdf,  paste0(output.path, "/UMAP_EC_subcluster.pdf"))
+dev.off()
+
+
+# Save dataset with dim reduction
+saveRDS(integrated.seurat, "Exported_RDS_files/integrated_seurat.rds")
+
+
+}
+```
+
+### Subset and dim reduction for Endothelial dataset
+```{r endothelial_dataset}
+
+if(long.compute){
+##################
+# subset dataset
+##################
+
+
+Idents(integrated.seurat) <- integrated.seurat@meta.data$cell_type
+
+unique(integrated.seurat@meta.data$cell_type)
+
+
+endothelial.seurat <- subset(integrated.seurat, idents = "Endothelial")
+
+# remove large dataset
+rm(integrated.seurat)
+
+
+
+
+################################
+# PCA and cluster identification
+################################
+
+
+# Set seed for reproducibility
+set.seed(42)
+
+DefaultAssay(endothelial.seurat) <- "integrated"
+Idents(endothelial.seurat) <- endothelial.seurat@meta.data$EC_subcluster
+
+
+# Calculate PCA
+endothelial.seurat <- Seurat::RunPCA(endothelial.seurat, 
+                                    npcs = 20, 
+                                    verbose = TRUE, 
+                                    rev.pca = TRUE,
+                                    seed.use = 42)
+
+# Find neighbours
+endothelial.seurat <- Seurat::FindNeighbors(endothelial.seurat, 
+                                           dims = 1:20)
+
+# Find clusters
+endothelial.seurat <- Seurat::FindClusters(endothelial.seurat, 
+                                          resolution = 0.1)
+
+
+
+
+#####################
+# Calculate UMAP
+#####################
+
+endothelial.seurat <- Seurat::RunUMAP(endothelial.seurat, 
+                                     reduction = "pca",
+                                     dims = 1:20,
+                                     umap.method = "uwot", 
+                                     n.neighbors = 45, # 5 to 50 // 45
+                                     min.dist = 0.5, # Sensible values are in the range 0.001 to 0.5 // 0.5
+                                     seed.use = 42)
+
+#Plot UMAP
+# Create output dir
+output.path <- paste0("output/figures/UMAP_Endothelial")
+
+if(!dir.exists(output.path)){
+  dir.create(output.path, 
+             recursive = TRUE)}
+
+
+
+# New clusters
+UMAPPlot(endothelial.seurat, 
+         group.by = "seurat_clusters")
+
+
+dev.copy(pdf,  paste0(output.path, "/UMAP_seurat_clusters.pdf"))
+dev.off()
+
+# Sample ID
+UMAPPlot(endothelial.seurat, 
+         group.by = "SampleID")
+
+
+dev.copy(pdf,  paste0(output.path, "/UMAP_SampleID.pdf"))
+dev.off()
+
+# EC subcluster
+UMAPPlot(endothelial.seurat, 
+         group.by = "EC_subcluster")
+
+
+dev.copy(pdf,  paste0(output.path, "/UMAP_EC_subcluster.pdf"))
+dev.off()
+
+
+# disease
+UMAPPlot(endothelial.seurat, 
+         group.by = "disease")
+
+
+dev.copy(pdf,  paste0(output.path, "/UMAP_disease.pdf"))
+dev.off()
+
+
+
+# Save dataset with dim reduction
+saveRDS(endothelial.seurat, "Exported_RDS_files/endothelial_seurat.rds")
+
+}
+```
+
+
+
+
+### Dataset visualisation
+```{r Gene_expression}
+
+
+
+# Create output dir
+output.path <- paste0("output/figures/FeaturePlots")
+
+if(!dir.exists(output.path)){
+  dir.create(output.path, 
+             recursive = TRUE)}
+
+
+DefaultAssay(integrated.seurat) <- "integrated"
+Idents(integrated.seurat) <- integrated.seurat@meta.data$cell_type
+
+p1 <- UMAPPlot(integrated.seurat)
+
+
+cxcl12 <- FeaturePlot(integrated.seurat, 
+                  "CXCL12", 
+                  pt.size = 1, 
+                  split.by = "disease",
+                  order = T)
+
+ptprc <- FeaturePlot(integrated.seurat, 
+                  "PTPRC", 
+                  pt.size = 1, 
+                  order = T)
+
+
+
+
+
+
+p2 <- FeaturePlot(integrated.seurat, 
+                  "PECAM1", 
+                  pt.size = 1, 
+                  order = T)
+
+
+
+cldn5 <- FeaturePlot(integrated.seurat, 
+                  "CLDN5", 
+                  pt.size = 1, 
+                  order = T)
+
+vmf <- FeaturePlot(seurat.list$Tumour_2, 
+                  "VWF", 
+                  pt.size = 1, 
+                  order = T)
+
+p6 <- FeaturePlot(seurat.list$Tumour_2, 
+                  "CAVIN2", 
+                  pt.size = 1, 
+                  order = T)
+
+
+
+(p1|cldn5)/cxcl12
+
+
+dev.copy(pdf, "temp.pdf")
+dev.off()
+
+# PECAM1, CLDN5, VWF, CAVIN2, CD34
+
+
+```
+
+
+
+
+
+
+
+
+
+
+## Imputation {.tabset}
+
+### Imputation calculation
+```{r seurat_imputation}
+
+if(long.compute){
+  
+  integrated.seurat <- SeuratWrappers::RunALRA(integrated.seurat,
+                                               genes.use = rownames(integrated.seurat))
+  
+  # Save dataset with imputation
+  saveRDS(integrated.seurat, "Exported_RDS_files/Integrated_seurat_with_imputation.rds")
+  savehd5
+}
+
+
+```
+
+
+
+
+
+
+### DEG calculation
+```{r DEG_calculation}
+
+if(long.compute){
+  for(i in seq_along(seurat.list)){
+    DefaultAssay(seurat.list[[i]]) <- "SCT"
+  }
+  
+  #BiocManager::install('limma')
+  #library("limma")
+  
+  
+  markers.vec <- lapply(seurat.list, 
+                        FUN = Seurat::FindAllMarkers,
+                        only.pos = FALSE)
+  
+  
+  # Save dataset with dim reduction
+  saveRDS(markers.vec, "Exported_RDS_files/DEG_markers.rds")
+  
+  
+}
+
+```
+
+
+
